@@ -1,8 +1,9 @@
-// App-Kern: Router, Topbar-Countdown, Guthaben, Wunschliste, Benachrichtigungen.
-import { $, $$, esc, fmtClock, fmtNum, fmtShort, fmtTime, nextReset, toast } from './util.js';
+// App-Kern: Router, Topbar (transparent → Glas), Profil-Menü, Countdowns, Guthaben, Wunschliste, Audio.
+import { $, $$, esc, fmtClock, fmtNum, fmtShort, nextReset, toast, icons } from './util.js';
 import { store } from './store.js';
 import { loadShop, onShop, getShop, pollForNewShop } from './data.js';
 import { getSnap, leaveText, leaveShort } from './components.js';
+import { playTrack, leaveHover, openMini, onAudio, isMissing } from './audio.js';
 
 const VIEWS = {
   shop: { title: 'Item-Shop', load: () => import('./views/shop.js') },
@@ -16,6 +17,7 @@ const VIEWS = {
 };
 
 const main = $('#main');
+const topbar = $('[data-topbar]');
 const mounted = {};
 const scrollPos = {};
 let active = null;
@@ -56,9 +58,11 @@ async function showView(name) {
   active = name;
   if (!first) mounted[name].mod?.onShow?.();
   window.scrollTo({ top: first ? 0 : (scrollPos[name] || 0) });
+  updateTopbar();
 }
 
 async function route() {
+  closeMenus();
   const { route: r, arg } = parseHash();
   if (r === 'item' || r === 'offer') {
     if (!active) await showView(lastView);
@@ -84,9 +88,51 @@ window.addEventListener('hashchange', (e) => {
   route();
 });
 
-/* ---------- Ticker: alle Countdowns auf der Seite ---------- */
+/* ---------- Topbar: über dem Shop-Intro transparent, sonst Glas ---------- */
+function updateTopbar() {
+  const solid = active !== 'shop' || window.scrollY > 24 || !$('[data-mobile-menu]').hidden;
+  topbar.classList.toggle('is-solid', solid);
+}
+window.addEventListener('scroll', updateTopbar, { passive: true });
+
+/* ---------- Menüs ---------- */
+const burger = $('[data-burger]');
+const mobileMenu = $('[data-mobile-menu]');
+const userBtn = $('[data-user-btn]');
+const userMenu = $('[data-user-menu]');
+
+function closeMenus() {
+  mobileMenu.hidden = true;
+  burger.setAttribute('aria-expanded', 'false');
+  userMenu.hidden = true;
+  userBtn.setAttribute('aria-expanded', 'false');
+  updateTopbar();
+}
+
+function renderUser() {
+  const s = store.settings;
+  const name = s.epicName || '';
+  $('[data-user-name]').textContent = name || (s.setupDone ? 'Profil' : 'Setup');
+  const av = $('[data-avatar]');
+  av.innerHTML = name ? esc(name.charAt(0).toUpperCase()) : (s.setupDone ? icons.user : '!');
+  const bal = store.balance;
+  userMenu.innerHTML = `
+    <div class="menu__head">
+      <span class="label">${name ? 'Angemeldet als' : 'Noch nicht eingerichtet'}</span>
+      <strong>${esc(name || 'Gast')}</strong>
+      ${bal != null ? `<span class="muted" style="font-size:var(--t-sm)">${fmtNum(bal)} V-Bucks Guthaben</span>` : ''}
+    </div>
+    <a href="#/stats" role="menuitem">Meine Stats</a>
+    <a href="#/spind" role="menuitem">Spind & Wunschliste</a>
+    <a href="#/vbucks" role="menuitem">V-Bucks-Rechner</a>
+    <a href="#/setup" role="menuitem">Einstellungen</a>
+    ${s.setupDone ? '' : '<a class="menu__cta" href="#/setup" role="menuitem">Einmal-Setup starten</a>'}`;
+}
+
+/* ---------- Countdowns ---------- */
 let resetAt = nextReset();
 let resetFired = false;
+const pad = (n) => String(n).padStart(2, '0');
 function tick() {
   const now = Date.now();
   if (now >= resetAt && !resetFired) {
@@ -94,8 +140,12 @@ function tick() {
     toast('Shop-Wechsel – der neue Shop wird geladen …');
     pollForNewShop(() => { toast('Der neue Shop ist da'); resetAt = nextReset(); resetFired = false; });
   }
-  const clock = fmtClock(resetAt - now);
+  const left = Math.max(0, resetAt - now);
+  const clock = fmtClock(left);
   $$('[data-until-reset]').forEach((el) => { el.textContent = clock; });
+  const s = Math.floor(left / 1000);
+  const parts = { h: pad(Math.floor(s / 3600)), m: pad(Math.floor((s % 3600) / 60)), s: pad(s % 60) };
+  $$('[data-cd]').forEach((el) => { const v = parts[el.dataset.cd]; if (el.textContent !== v) el.textContent = v; });
   $$('[data-until][data-fmt="clock"]').forEach((el) => { el.textContent = fmtClock(Number(el.dataset.until) - now); });
 }
 function tickSlow() {
@@ -120,10 +170,11 @@ setInterval(tickSlow, 60000);
 function renderBalance() {
   const b = store.balance;
   $$('[data-balance]').forEach((el) => { el.textContent = b == null ? 'Guthaben' : fmtNum(b); });
+  $$('.pill--vb').forEach((el) => el.classList.toggle('is-empty', b == null));
 }
 let pop = null;
-function closePop() { pop?.remove(); pop = null; document.removeEventListener('pointerdown', outside, true); }
-function outside(e) { if (pop && !pop.contains(e.target) && !e.target.closest('[data-balance-btn]')) closePop(); }
+function closePop() { pop?.remove(); pop = null; document.removeEventListener('pointerdown', outsidePop, true); }
+function outsidePop(e) { if (pop && !pop.contains(e.target) && !e.target.closest('[data-balance-btn]')) closePop(); }
 function openBalance(btn) {
   if (pop) { closePop(); return; }
   const r = btn.getBoundingClientRect();
@@ -132,7 +183,7 @@ function openBalance(btn) {
   pop.setAttribute('role', 'dialog');
   pop.setAttribute('aria-label', 'V-Bucks-Guthaben');
   pop.innerHTML = `<h3>Dein Guthaben</h3>
-    <p>Trag ein, wie viele V-Bucks du gerade hast. Damit zeigt dir die Seite, was du dir leisten kannst und was beim Aufladen fehlt. Bleibt nur in diesem Browser.</p>
+    <p>Trag ein, wie viele V-Bucks du gerade hast. Dann siehst du, was du dir leisten kannst und was beim Aufladen fehlt. Bleibt nur in diesem Browser.</p>
     <form class="row" data-balance-form>
       <label class="sr-only" for="balance-input">V-Bucks</label>
       <input class="input num" id="balance-input" type="number" min="0" step="50" inputmode="numeric" placeholder="z. B. 800" value="${store.balance ?? ''}">
@@ -140,7 +191,7 @@ function openBalance(btn) {
     </form>`;
   document.body.append(pop);
   const w = pop.offsetWidth;
-  pop.style.top = `${r.bottom + 8}px`;
+  pop.style.top = `${r.bottom + 10}px`;
   pop.style.left = `${Math.max(16, Math.min(window.innerWidth - w - 16, r.right - w))}px`;
   const input = pop.querySelector('input');
   input.focus();
@@ -153,22 +204,7 @@ function openBalance(btn) {
     closePop();
   });
   pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closePop(); btn.focus(); } });
-  setTimeout(() => document.addEventListener('pointerdown', outside, true));
-}
-
-/* ---------- Setup-Hinweis & Navigation ---------- */
-function renderSetupState() {
-  const s = store.settings;
-  $('[data-setup-link]').hidden = !!(s.setupDone || s.setupDismissed);
-  const slot = $('#banner-slot');
-  const existing = slot.querySelector('[data-banner="setup"]');
-  if (s.setupDone || s.setupDismissed) { existing?.remove(); return; }
-  if (existing) return;
-  slot.insertAdjacentHTML('beforeend', `<div class="banner" data-banner="setup"><div class="banner__inner">
-    <p><strong>Einmal-Setup</strong>Trag einmal deinen API-Key und Epic-Namen ein, dann siehst du deine Stats. Dauert eine Minute, bleibt nur in diesem Browser.</p>
-    <a class="btn btn--primary btn--sm" href="#/setup">Setup starten</a>
-    <button class="btn btn--ghost btn--sm" type="button" data-dismiss-setup>Später</button>
-  </div></div>`);
+  setTimeout(() => document.addEventListener('pointerdown', outsidePop, true));
 }
 
 /* ---------- Wunschliste ↔ Shop ---------- */
@@ -183,17 +219,55 @@ function checkWishHits(shop) {
   if (fresh.length) {
     try {
       new Notification(fresh.length === 1 ? `${fresh[0].name} ist im Shop` : `${fresh.length} Items von deiner Wunschliste sind im Shop`, {
-        body: fresh.map((h) => h.name).join(', '),
-        icon: fresh[0].img || 'assets/img/favicon.svg',
-        tag: `sr-${day}`,
+        body: fresh.map((h) => h.name).join(', '), icon: fresh[0].img || 'assets/img/favicon.svg', tag: `sr-${day}`,
       });
-    } catch { /* manche Browser erlauben das nur per Service Worker */ }
+    } catch { /* nur per Service Worker erlaubt */ }
   }
   return hits;
 }
 
-/* ---------- Globale Ereignisse ---------- */
+/* ---------- Audio: Songs anspielen beim Hover, Klick = Play/Pause ---------- */
+const metaOf = (btn) => ({ key: btn.dataset.key, title: btn.dataset.title, artist: btn.dataset.artist, art: btn.dataset.art });
+let hoverTimer = null;
+let hoverKey = null;
+const finePointer = matchMedia('(hover: hover) and (pointer: fine)');
+document.addEventListener('pointerover', (e) => {
+  if (e.pointerType !== 'mouse' || !finePointer.matches) return;
+  const tile = e.target.closest('[data-track-tile]');
+  if (!tile || tile.dataset.trackTile === hoverKey) return;
+  hoverKey = tile.dataset.trackTile;
+  clearTimeout(hoverTimer);
+  const btn = tile.querySelector('[data-play="track"]');
+  if (!btn || isMissing(metaOf(btn))) return;
+  hoverTimer = setTimeout(() => playTrack(metaOf(btn), { mode: 'hover' }), 420);
+});
+document.addEventListener('pointerout', (e) => {
+  const tile = e.target.closest('[data-track-tile]');
+  if (!tile || tile.contains(e.relatedTarget)) return;
+  clearTimeout(hoverTimer);
+  leaveHover(tile.dataset.trackTile);
+  if (hoverKey === tile.dataset.trackTile) hoverKey = null;
+});
+onAudio((s) => {
+  $$('[data-play="track"]').forEach((b) => {
+    const mine = b.dataset.key === s.key;
+    const st = mine ? (s.loading ? 'loading' : s.playing ? 'playing' : 'paused') : (isMissing(metaOf(b)) ? 'missing' : 'idle');
+    if (b.dataset.state !== st) b.dataset.state = st;
+    b.style.setProperty('--p', mine ? s.p.toFixed(4) : 0);
+    b.setAttribute('aria-pressed', mine && s.playing ? 'true' : 'false');
+  });
+});
+
+/* ---------- Globale Klicks ---------- */
 document.addEventListener('click', (e) => {
+  const play = e.target.closest('[data-play]');
+  if (play) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (play.dataset.play === 'track') playTrack(metaOf(play), { mode: 'click' });
+    else openMini({ video: play.dataset.video, title: play.dataset.title });
+    return;
+  }
   const fav = e.target.closest('[data-fav]');
   if (fav) {
     e.preventDefault();
@@ -204,23 +278,36 @@ document.addEventListener('click', (e) => {
     return;
   }
   const bal = e.target.closest('[data-balance-btn]');
-  if (bal) { openBalance(bal); return; }
-  if (e.target.closest('[data-dismiss-setup]')) { store.setSettings({ setupDismissed: true }); }
+  if (bal) { closeMenus(); openBalance(bal); return; }
+  if (e.target.closest('[data-burger]')) {
+    const open = mobileMenu.hidden;
+    closeMenus();
+    mobileMenu.hidden = !open;
+    burger.setAttribute('aria-expanded', String(open));
+    updateTopbar();
+    return;
+  }
+  if (e.target.closest('[data-user-btn]')) {
+    const open = userMenu.hidden;
+    closeMenus();
+    userMenu.hidden = !open;
+    userBtn.setAttribute('aria-expanded', String(open));
+    return;
+  }
+  if (!e.target.closest('[data-user-menu]') && !userMenu.hidden) closeMenus();
 });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && (!userMenu.hidden || !mobileMenu.hidden)) closeMenus(); });
 
 window.addEventListener('store', (e) => {
   if (e.detail === 'wish') {
-    $$('[data-fav]').forEach((b) => {
-      const on = store.isWished(b.dataset.fav);
-      b.setAttribute('aria-pressed', on);
-    });
+    $$('[data-fav]').forEach((b) => b.setAttribute('aria-pressed', store.isWished(b.dataset.fav)));
     const s = getShop();
     if (s) checkWishHits(s);
   }
-  if (e.detail === 'settings') { renderBalance(); renderSetupState(); }
+  if (e.detail === 'settings') { renderBalance(); renderUser(); }
 });
 
-// Bild-Fallbacks: nächstes Bild aus data-fallback probieren, sonst ausblenden
+// Bild-Fallbacks: nächstes Bild probieren, sonst ausblenden
 document.addEventListener('error', (e) => {
   const img = e.target;
   if (!(img instanceof HTMLImageElement)) return;
@@ -229,7 +316,6 @@ document.addEventListener('error', (e) => {
   else img.style.visibility = 'hidden';
 }, true);
 
-// Tab wieder sichtbar und Daten älter als 20 Min. → still neu laden
 document.addEventListener('visibilitychange', () => {
   const s = getShop();
   if (document.visibilityState === 'visible' && s && Date.now() - s.loadedAt > 20 * 60000) loadShop({ force: true }).catch(() => {});
@@ -239,10 +325,7 @@ onShop((shop) => checkWishHits(shop));
 
 /* ---------- Start ---------- */
 renderBalance();
-renderSetupState();
+renderUser();
 tick();
 route();
 loadShop().catch(() => { /* die Shop-Ansicht zeigt den Fehler */ });
-
-export { checkWishHits };
-export const resetTimeLabel = () => fmtTime(nextReset());

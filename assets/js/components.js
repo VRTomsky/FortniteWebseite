@@ -26,6 +26,20 @@ export const getSnap = (id) => snaps.get(id);
 const vars = (c, pattern) => { const p = safeImg(pattern); return `--c1:${c[0]};--c2:${c[1]};--c3:${c[2]};${p ? `--pattern:url('${p}');` : ''}`; };
 const fallbackAttr = (list) => (list?.length ? ` data-fallback="${esc(list.join('|'))}"` : '');
 
+const cls = (svg, c) => svg.replace('<svg ', `<svg class="${c}" `);
+const PLAY_ICONS = cls(icons.play, 'i-play') + cls(icons.pause, 'i-pause') + cls(icons.spin, 'i-spin');
+
+/** Play-Knopf: Song-Vorschau (track) oder Emote-Video (video) */
+export function playBtn(item) {
+  if (item.kind === 'track') {
+    return `<button class="play" type="button" data-play="track" data-key="track:${esc(item.id)}" data-title="${esc(item.name)}" data-artist="${esc(item.artist || '')}" data-art="${esc(item.images?.icon || '')}" aria-label="Vorschau von ${esc(item.name)} abspielen">${PLAY_ICONS}</button>`;
+  }
+  if (item.type === 'emote' && item.video) {
+    return `<button class="play" type="button" data-play="video" data-video="${esc(item.video)}" data-title="${esc(item.name)}" aria-label="${esc(item.name)} mit Ton ansehen">${PLAY_ICONS}</button>`;
+  }
+  return '';
+}
+
 function favBtn(id, name) {
   const on = store.isWished(id);
   return `<button class="fav" type="button" data-fav="${esc(id)}" aria-pressed="${on}" aria-label="${esc(name)} ${on ? 'von der Wunschliste nehmen' : 'auf die Wunschliste'}">${icons.heart}</button>`;
@@ -46,12 +60,15 @@ export function offerTile(o, { watch } = {}) {
   const leave = o.outAt
     ? `<span class="tile__leave${o.outAt - Date.now() < 86400000 ? ' is-soon' : ''}" data-until="${o.outAt}" data-fmt="leave-short" title="${esc(leaveText(o.outAt))}">${esc(leaveShort(o.outAt))}</span>`
     : '';
-  const cls = ['tile', o.span > 1 ? `tile--w${o.span}` : '', o.cover ? 'tile--cover' : ''].filter(Boolean).join(' ');
-  return `<article class="${cls}" style="${vars(o.colors, o.pattern)}">
+  const klass = ['tile', o.span > 1 ? `tile--w${o.span}` : '', o.cover ? 'tile--cover' : ''].filter(Boolean).join(' ');
+  const play = main && !o.isBundle ? playBtn(main) : '';
+  const trackAttr = main?.kind === 'track' && !o.isBundle ? ` data-track-tile="track:${esc(main.id)}"` : '';
+  return `<article class="${klass}" style="${vars(o.colors, o.pattern)}"${trackAttr}>
     <div class="tile__bg"></div>
     ${o.image ? `<img class="tile__img" src="${esc(o.image)}"${fallbackAttr(o.fallbacks)} alt="" loading="lazy" decoding="async">` : ''}
     <div class="tile__badges">${badges.slice(0, 3).join('')}</div>
     ${main ? favBtn(main.id, o.title) : ''}
+    ${play}
     <div class="tile__band">
       <span class="tile__kicker">${esc(o.subtitle)}</span>
       <h3 class="tile__name">${esc(o.title)}</h3>
@@ -99,6 +116,7 @@ export function itemTile(it, { badge, seen = true, owned } = {}) {
     ${src ? `<img class="tile__img" src="${esc(src)}"${fallbackAttr(fb)} alt="" loading="lazy" decoding="async">` : ''}
     <div class="tile__badges">${badges.join('')}</div>
     ${favBtn(it.id, it.name)}
+    ${playBtn(it)}
     <div class="tile__band">
       <span class="tile__kicker">${esc(typeLabel(it.type))}${it.rarity ? ` · ${esc(rarityLabel(it.rarity))}` : ''}</span>
       <h3 class="tile__name">${esc(it.name)}</h3>

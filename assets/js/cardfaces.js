@@ -1,9 +1,9 @@
 // Zeichnet Vorder- und Rückseite der Sammelkarte auf Canvas (ohne Three.js, auch für den Fallback).
 export const CARD_W = 1000;
 export const CARD_H = 1400;
-const DISPLAY = '"FN Display", "Anton", Impact, sans-serif';
-const UI = '"Barlow Condensed", "Arial Narrow", sans-serif';
-const BODY = '"Barlow", system-ui, sans-serif';
+const DISPLAY = '"FN Display", "Burbank Big Condensed", "Burbank Big Cd Bk", "Anton", Impact, sans-serif';
+const UI = '"Plus Jakarta Sans", system-ui, sans-serif';
+const BODY = '"Plus Jakarta Sans", system-ui, sans-serif';
 
 export function loadImg(src) {
   return new Promise((resolve) => {
@@ -29,7 +29,7 @@ export async function fontsReady() {
   try {
     await Promise.all([
       document.fonts.load(`400 110px ${DISPLAY}`),
-      document.fonts.load(`700 44px ${UI}`),
+      document.fonts.load(`800 44px ${UI}`),
       document.fonts.load(`600 44px ${BODY}`),
     ]);
   } catch { /* Fallback-Schrift reicht */ }
@@ -119,7 +119,7 @@ export function drawFront(canvas, spec, assets) {
   ctx.fillStyle = '#ffffff';
   fitText(ctx, String(spec.title || '').toUpperCase(), 60, 1214, 880, 116, DISPLAY);
   ctx.fillStyle = 'rgba(238,241,247,0.7)';
-  ctx.font = `700 42px ${UI}`;
+  ctx.font = `800 38px ${UI}`;
   if ('letterSpacing' in ctx) ctx.letterSpacing = '3px';
   ctx.fillText(String(spec.subtitle || '').toUpperCase(), 62, 1276);
   if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
@@ -131,7 +131,7 @@ export function drawFront(canvas, spec, assets) {
     ctx.fillText(new Intl.NumberFormat('de-DE').format(spec.priceVb), assets.vbIcon ? 134 : 62, 1358);
   } else if (spec.footer) {
     ctx.fillStyle = 'rgba(238,241,247,0.5)';
-    ctx.font = `600 36px ${UI}`;
+    ctx.font = `700 32px ${UI}`;
     ctx.fillText(spec.footer, 62, 1350);
   }
   ctx.restore();
@@ -188,7 +188,7 @@ export function drawBack(canvas, spec) {
   let y = 690;
   for (const [label, value] of (spec.rows || []).slice(0, 6)) {
     ctx.fillStyle = 'rgba(238,241,247,0.5)';
-    ctx.font = `700 32px ${UI}`;
+    ctx.font = `800 28px ${UI}`;
     if ('letterSpacing' in ctx) ctx.letterSpacing = '4px';
     ctx.fillText(String(label).toUpperCase(), 84, y);
     if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';

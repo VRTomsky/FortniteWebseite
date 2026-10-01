@@ -3,9 +3,10 @@ import { $, esc, fmtNum, fmtDate, fmtAgo, fmtSpan, fmtEur, icons, copyText, toas
 import { api } from './api.js';
 import { store } from './store.js';
 import { getShop, loadShop, normalizeBr, historyStats, cheapestOfferFor, loadIndex, brImages } from './data.js';
-import { vb, snapOf, leaveText } from './components.js';
+import { vb, snapOf, leaveText, playBtn } from './components.js';
 import { rarityColors, rarityImage, rarityLabel, typeLabel } from './labels.js';
 import { cheapestTopUps } from './vbmath.js';
+import { stop as stopAudio, closeMini } from './audio.js';
 
 let root = null;
 let current = null;
@@ -205,6 +206,7 @@ function renderPanel(m) {
     <div class="viewer__tags">${tags.join('')}</div>
     ${desc ? `<p class="desc">${esc(desc)}</p>` : ''}
     ${buy}
+    ${s?.kind === 'track' && !m.isBundle ? `<div class="audio-line">${playBtn(s)}<p>30-Sekunden-Vorschau des Originals über Apple Music. Fährst du im Shop mit der Maus über einen Song, spielt er automatisch an.</p></div>` : ''}
     ${alsoIn}
     ${wishId ? `<div class="actions">
       <button class="btn${wished ? ' btn--primary' : ''}" type="button" data-v-wish aria-pressed="${!!wished}">${icons.heart}<span>${wished ? 'Gemerkt' : 'Merken'}</span></button>
@@ -286,7 +288,7 @@ async function mountStage(m, token) {
   hud.innerHTML = `
     <button class="btn btn--sm" type="button" data-v-rotate aria-pressed="true">${icons.rotate}<span>Auto-Drehen</span></button>
     <button class="btn btn--sm" type="button" data-v-flip>${icons.cube}<span>Umdrehen</span></button>
-    ${m.video ? `<button class="btn btn--sm btn--primary" type="button" data-v-video>${icons.play}<span>Im Spiel ansehen</span></button>` : ''}
+    ${m.video ? `<button class="btn btn--sm btn--primary" type="button" data-v-video>${icons.play}<span>${m.subject?.type === 'emote' ? 'Anhören & ansehen' : 'Im Spiel ansehen'}</span></button>` : ''}
     <span class="viewer__hint"><span class="hint-long">Ziehen zum Drehen · Scrollen oder zwei Finger zum Zoomen · Doppelklick setzt zurück</span><span class="hint-short">Ziehen zum Drehen · zwei Finger zum Zoomen</span></span>`;
   body.innerHTML = '<div class="viewer__load">3D-Karte wird gebaut …</div>';
   try {
@@ -329,6 +331,8 @@ function teardownStage() {
 }
 
 function showVideo(id) {
+  stopAudio();
+  closeMini();
   teardownStage();
   const body = $('[data-v-stage-body]', root);
   body.innerHTML = `<div class="viewer__video"><iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?autoplay=1&rel=0&modestbranding=1" title="Item im Spiel (Showcase-Video)" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div>`;

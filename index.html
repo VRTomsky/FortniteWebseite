@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Shopradar</title>
-  <meta name="description" content="Fortnite Item-Shop live: tägliche Rotation, Comebacks und wann ein Item zuletzt da war, Leaks, V-Bucks-Rechner und 3D-Ansicht.">
-  <meta name="theme-color" content="#0a0e19">
+  <meta name="description" content="Fortnite Item-Shop live: tägliche Rotation, Comebacks und wann ein Item zuletzt da war, Song- und Emote-Vorschau, Leaks, V-Bucks-Rechner und 3D-Ansicht.">
+  <meta name="theme-color" content="#05070d">
   <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fortnite-api.com" crossorigin>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow+Condensed:wght@500;600;700;800&family=Barlow:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="assets/css/style.css">
   <script type="importmap">
   {
@@ -25,9 +25,9 @@
 <body>
   <a class="skip" href="#main">Zum Inhalt springen</a>
 
-  <header class="topbar">
+  <header class="topbar" data-topbar>
     <a class="brand" href="#/shop" aria-label="Shopradar – zum Item-Shop">
-      <svg class="brand__mark" viewBox="0 0 64 64" aria-hidden="true"><path fill="#18213a" d="M10 4h50l-6 56H4z"/><path fill="none" stroke="#ffe23f" stroke-width="4" d="M16 46a22 22 0 0 1 22-22"/><path fill="none" stroke="#ffe23f" stroke-width="4" opacity=".55" d="M24 46a14 14 0 0 1 14-14"/><path fill="#ffe23f" d="M16 46l22-22v22z" opacity=".25"/><circle cx="38" cy="46" r="5" fill="#ffe23f"/></svg>
+      <svg class="brand__mark" viewBox="0 0 64 64" aria-hidden="true"><path fill="none" stroke="#ffe23f" stroke-width="6" stroke-linecap="round" d="M12 50a38 38 0 0 1 38-38"/><path fill="none" stroke="#ffe23f" stroke-width="6" stroke-linecap="round" opacity=".55" d="M24 50a26 26 0 0 1 26-26"/><circle cx="50" cy="50" r="8" fill="#ffe23f"/></svg>
       <span class="brand__word">Shop<b>radar</b></span>
     </a>
 
@@ -37,25 +37,45 @@
       <a href="#/leaks" data-nav="leaks">Leaks</a>
       <a href="#/season" data-nav="season">Season</a>
       <a href="#/vbucks" data-nav="vbucks">V-Bucks</a>
-      <a href="#/spind" data-nav="spind">Spind<span class="dot" data-wish-dot hidden></span></a>
+      <a href="#/spind" data-nav="spind">Spind<span class="nav__dot" data-wish-dot hidden></span></a>
       <a href="#/stats" data-nav="stats">Stats</a>
-      <a href="#/setup" data-nav="setup" data-setup-link hidden>Setup</a>
     </nav>
 
     <div class="topbar__meta">
-      <div class="reset-pill" title="Der Item-Shop wechselt täglich um 00:00 UTC">
-        <span class="label">Neuer Shop in</span>
-        <span class="clock" data-until-reset data-fmt="clock">--:--:--</span>
-      </div>
-      <button class="balance-chip" type="button" data-balance-btn aria-haspopup="dialog" title="Dein V-Bucks-Guthaben">
+      <a class="pill pill--clock" href="#/shop" title="Der Item-Shop wechselt täglich um 00:00 UTC">
+        <span class="live" aria-hidden="true"></span>
+        <span class="pill__label">Neuer Shop</span>
+        <span class="num" data-until-reset data-fmt="clock">--:--:--</span>
+      </a>
+      <button class="pill pill--vb" type="button" data-balance-btn aria-haspopup="dialog" title="Dein V-Bucks-Guthaben">
         <img src="https://fortnite-api.com/images/vbuck.png" alt="" width="18" height="18">
         <span data-balance>—</span>
         <span class="sr-only">V-Bucks-Guthaben ändern</span>
       </button>
+      <div class="user" data-user>
+        <button class="pill pill--user" type="button" data-user-btn aria-haspopup="menu" aria-expanded="false" aria-controls="user-menu">
+          <span class="avatar" data-avatar aria-hidden="true">?</span>
+          <span class="pill__name" data-user-name>Setup</span>
+          <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.4" d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div class="menu" id="user-menu" role="menu" data-user-menu hidden></div>
+      </div>
+      <button class="burger" type="button" data-burger aria-label="Menü öffnen" aria-expanded="false" aria-controls="mobile-menu"><span></span><span></span><span></span></button>
     </div>
   </header>
 
-  <div id="banner-slot"></div>
+  <div class="mobile-menu" id="mobile-menu" data-mobile-menu hidden>
+    <nav aria-label="Menü">
+      <a href="#/shop" data-nav="shop">Shop</a>
+      <a href="#/archiv" data-nav="archiv">Archiv</a>
+      <a href="#/leaks" data-nav="leaks">Leaks</a>
+      <a href="#/season" data-nav="season">Season</a>
+      <a href="#/vbucks" data-nav="vbucks">V-Bucks</a>
+      <a href="#/spind" data-nav="spind">Spind</a>
+      <a href="#/stats" data-nav="stats">Stats</a>
+      <a href="#/setup" data-nav="setup">Einstellungen</a>
+    </nav>
+  </div>
 
   <main id="main" tabindex="-1">
     <noscript><p class="notice notice--warn">Diese Seite braucht JavaScript, um den Shop live zu laden.</p></noscript>
@@ -63,7 +83,7 @@
 
   <footer class="footer">
     <div class="footer__inner">
-      <p>Shopradar ist ein Fan-Projekt und nicht mit Epic Games verbunden. Fortnite und alle Item-Bilder sind Marken bzw. Eigentum von Epic Games. Daten: <a href="https://fortnite-api.com" rel="noopener" target="_blank">fortnite-api.com</a>.</p>
+      <p>Shopradar ist ein Fan-Projekt und nicht mit Epic Games verbunden. Fortnite und alle Item-Bilder sind Marken bzw. Eigentum von Epic Games. Daten: <a href="https://fortnite-api.com" rel="noopener" target="_blank">fortnite-api.com</a> · Song-Vorschauen: Apple Music.</p>
       <div class="footer__links">
         <a href="#/setup">Einstellungen</a>
         <a href="#/season">Saison-Infos</a>
@@ -72,6 +92,7 @@
   </footer>
 
   <div id="viewer-root"></div>
+  <div id="player-root"></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 </body>
 </html>
