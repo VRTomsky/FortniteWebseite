@@ -43,7 +43,7 @@ python3 -m http.server 8000
 # dann http://localhost:8000 öffnen
 ```
 
-Lokal fehlt der Archiv-Index (`data/index.json` erzeugt nur der Workflow); das Archiv nutzt dann automatisch die Live-Suche nach Namen. Den Index kannst du auch selbst bauen: `node scripts/build-data.mjs` (Node 20+).
+Lokal fehlt der Archiv-Index (`data/index.json` erzeugt nur der Workflow); das Archiv nutzt dann automatisch die Live-Suche nach Namen. Den Index kannst du auch selbst bauen: `node scripts/build-data.mjs` (Node 22+).
 
 ## Technik
 

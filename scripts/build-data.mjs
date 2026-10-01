@@ -1,4 +1,4 @@
-// Läuft im GitHub-Workflow (Node 20+): baut data/index.json und data/meta.json
+// Läuft im GitHub-Workflow (Node 22): baut data/index.json und data/meta.json
 // und öffnet Alarm-Issues, wenn Begriffe aus config/watch.json im Shop oder in den Spieldateien auftauchen.
 // Lokal testen: node scripts/build-data.mjs   (ohne GITHUB_TOKEN wird kein Issue erstellt; ALARM_DRY_RUN=1 zeigt Treffer)
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
