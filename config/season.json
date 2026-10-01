@@ -1,0 +1,17 @@
+{
+  "chapter": 7,
+  "season": 4,
+  "name": "Override",
+  "start": "2026-08-20T08:00:00Z",
+  "end": "2026-11-01T06:00:00Z",
+  "endApprox": true,
+  "events": [
+    {
+      "name": "Fortnitemares 2026",
+      "start": "2026-10-01T08:00:00Z",
+      "end": "2026-11-01T06:00:00Z",
+      "text": "Das Halloween-Event mit Five Nights at Freddy's, Freddy Krueger, Beetlejuice, Slender Man, The Purge, Black Clover und Obsession. Läuft bis zum Saisonende."
+    }
+  ],
+  "note": "Diese Datei pflegst du von Hand. Der Workflow erkennt neue Kapitel/Saisons automatisch; stimmt diese Datei dann nicht mehr, blendet die Seite Name und Enddatum aus, bis du sie aktualisierst."
+}

@@ -1,0 +1,78 @@
+name: Shopradar bauen & veröffentlichen
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # Shop-Wechsel ist 00:00 UTC – kurz danach und als Nachzügler
+    - cron: '7 0 * * *'
+    - cron: '41 0 * * *'
+    # Über den Tag verteilt für Leaks und Shop-Updates an Update-Tagen
+    - cron: '17 4,8,12,16,20 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  issues: write
+
+concurrency:
+  group: shopradar-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      pages: ${{ steps.pages.outputs.enabled }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Prüfen, ob GitHub Pages eingeschaltet ist
+        id: pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh api "repos/${{ github.repository }}/pages" --jq '.build_type' 2>/dev/null | grep -q workflow; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=GitHub Pages ist noch aus::Settings → Pages → Source: „GitHub Actions“ wählen und diesen Workflow danach einmal neu starten."
+          fi
+
+      - name: Daten holen, Archiv-Index bauen, Watchlist prüfen
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/build-data.mjs
+
+      - name: Seite zusammenstellen
+        run: |
+          mkdir -p _site
+          cp -r index.html .nojekyll assets config data _site/
+
+      - name: Pages konfigurieren
+        if: steps.pages.outputs.enabled == 'true'
+        uses: actions/configure-pages@v5
+
+      - name: Seite hochladen
+        if: steps.pages.outputs.enabled == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.pages == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Veröffentlichen
+        id: deployment
+        uses: actions/deploy-pages@v4
