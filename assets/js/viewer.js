@@ -1,10 +1,11 @@
-// Detailfenster: Bühne mit Video von Fortnite.GG (360°-Drehung, Emotes mit Ton) oder 3D-Karte, daneben Infos und Shop-Historie.
+// Detailfenster wie bei Fortnite.GG: links das Video (360°-Drehung, Emotes mit Ton) ohne Ränder, sonst die 3D-Karte;
+// rechts Name, Preis, Restzeit, Infos, Vorkommen, Enthält und das Set.
 import { $, esc, fmtNum, fmtDate, fmtAgo, fmtSpan, fmtEur, icons, copyText, toast, todayNum, DAY } from './util.js';
 import { api } from './api.js';
 import { store } from './store.js';
 import { getShop, loadShop, normalizeBr, historyStats, cheapestOfferFor, loadIndex, brImages, ggId, ggVideoUrl, ggPageUrl } from './data.js';
 import { vb, snapOf, leaveText, playBtn } from './components.js';
-import { rarityColors, rarityImage, rarityLabel, typeLabel } from './labels.js';
+import { rarityColors, rarityImage, rarityLabel, typeLabel, TYPE_ORDER } from './labels.js';
 import { cheapestTopUps } from './vbmath.js';
 import { stop as stopAudio, closeMini } from './audio.js';
 import { stopAll as stopTileVideos, NO_VIDEO, hasNoVideo, markNoVideo } from './video.js';
@@ -65,17 +66,20 @@ function mountShell() {
   root.setAttribute('aria-modal', 'true');
   root.setAttribute('aria-labelledby', 'viewer-title');
   root.innerHTML = `
-    <div class="viewer__stage" data-v-stage>
-      <button class="btn viewer__close" type="button" data-v-close>${icons.close}<span>Schließen</span></button>
-      <div data-v-stage-body style="position:absolute;inset:0"></div>
-      <div class="viewer__hud" data-v-hud></div>
-    </div>
-    <aside class="viewer__panel" data-v-panel></aside>`;
+    <div class="viewer__backdrop" data-v-close></div>
+    <div class="viewer__box">
+      <div class="viewer__stage" data-v-stage>
+        <div class="viewer__body" data-v-stage-body></div>
+        <div class="viewer__hud" data-v-hud></div>
+      </div>
+      <aside class="viewer__panel" data-v-panel></aside>
+      <button class="viewer__x" type="button" data-v-close aria-label="Schließen" title="Schließen (Esc)">${icons.close}</button>
+    </div>`;
   $('#viewer-root').append(root);
   document.body.classList.add('no-scroll');
   document.addEventListener('keydown', onKey);
   root.addEventListener('click', onClick);
-  $('[data-v-close]', root).focus({ preventScroll: true });
+  $('.viewer__x', root).focus({ preventScroll: true });
 }
 
 function onKey(e) {
@@ -138,87 +142,103 @@ function buildModel({ item, offer }) {
   };
 }
 
-/* ---------- Infopanel ---------- */
+/* ---------- Infopanel (Aufbau wie bei Fortnite.GG) ---------- */
+const fmtLeave = new Intl.DateTimeFormat('de-DE', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+function affordLine(o) {
+  const bal = store.balance;
+  if (bal == null) return '<p class="vp-small"><button class="linkbtn" type="button" data-balance-btn>Guthaben eintragen</button>, um zu sehen, was fehlt.</p>';
+  const need = o.price - bal;
+  if (need <= 0) return `<p class="vp-small">Dein Guthaben (${fmtNum(bal)}) reicht${bal - o.price > 0 ? ` – danach ${fmtNum(bal - o.price)} übrig` : ' genau'}.</p>`;
+  const best = cheapestTopUps(need, { allowExact: false })[0];
+  return `<p class="vp-small">Dir fehlen ${fmtNum(need)} V-Bucks${best ? ` – günstigste Aufladung: ${esc(best.label)} für ${fmtEur(best.cents / 100)}` : ''}. <a href="#/vbucks">Rechner</a></p>`;
+}
+
+/** Kleine Item-Kachel für „Enthält“ und „Teil des Sets“ */
+function miniTile(it) {
+  const c = it.colors || rarityColors(it.rarity, it.series);
+  const img = it.images?.icon || it.images?.small || brImages(it.id).icon;
+  return `<a class="vp-item" href="#/item/${encodeURIComponent(it.id)}" style="--c1:${c[0]};--c3:${c[2]}" title="${esc(it.name)}">
+    <img src="${esc(img)}" alt="" loading="lazy" decoding="async"><span class="sr-only">${esc(it.name)}</span></a>`;
+}
+
 function renderPanel(m) {
   lastModel = m;
   const s = m.subject;
   const o = m.offer;
-  const tags = [];
-  if (!m.isBundle && s?.rarity && s.kind === 'br') tags.push(`<span class="rar" style="--c1:${m.colors[0]}">${esc(s.rarityLabel || rarityLabel(s.rarity))}</span>`);
-  tags.push(`<span class="rar rar--plain">${esc(m.isBundle ? 'Paket' : (s?.typeLabel || typeLabel(s?.type)))}</span>`);
-  if (s?.chapter && !m.isBundle) tags.push(`<span class="rar rar--plain">Kapitel ${s.chapter} · Saison ${s.season}</span>`);
-  if (o?.section && o.section.id !== '_alc') tags.push(`<span class="rar rar--plain">${esc(o.section.name)}</span>`);
-
-  const desc = m.isBundle ? (o.offerTag || `${o.items.length} Items in einem Paket.`) : (s?.description || '');
   const st = m.stats;
-  const wishId = s?.id;
-  const wished = wishId && store.isWished(wishId);
-  const owned = wishId && store.isOwned(wishId);
+  const isItem = !m.isBundle && !!s;
   if (s) snapOf(s, m.colors);
+  const rarity = isItem && s.kind === 'br' ? (s.series?.name || s.rarityLabel || rarityLabel(s.rarity)) : '';
+  const typeTxt = m.isBundle ? 'Paket' : (s?.typeLabel || typeLabel(s?.type));
+  const desc = m.isBundle ? (o.offerTag || `${o.items.length} Items in einem Paket.`) : (s?.description || '');
+  const wishId = s?.id;
+  const wished = !!wishId && store.isWished(wishId);
+  const owned = !!wishId && store.isOwned(wishId);
 
-  let buy = '';
+  let shop;
   if (o) {
-    const bal = store.balance;
-    let afford = '';
-    if (bal != null) {
-      const need = o.price - bal;
-      if (need <= 0) afford = `<span class="muted">Dein Guthaben (${fmtNum(bal)}) reicht${bal - o.price > 0 ? ` – danach ${fmtNum(bal - o.price)} übrig` : ' genau'}.</span>`;
-      else {
-        const best = cheapestTopUps(need, { allowExact: false })[0];
-        afford = `<span class="muted">Dir fehlen ${fmtNum(need)} V-Bucks${best ? ` – günstigste Aufladung: ${esc(best.label)} für ${fmtEur(best.cents / 100)}` : ''}. <a href="#/vbucks">Rechner</a></span>`;
-      }
-    } else {
-      afford = '<span class="muted"><button class="linkbtn" type="button" data-balance-btn>Guthaben eintragen</button>, um zu sehen, was fehlt.</span>';
-    }
-    buy = `<div class="buyline">
-      <span class="label">Heute im Shop${o.isBundle && !m.isBundle ? ` · im Paket ${esc(quoted(o.title))}` : ''}</span>
-      ${vb(o.price, o.regular)}
-      ${o.outAt ? `<span class="label" data-until="${o.outAt}" data-fmt="leave">${esc(leaveText(o.outAt))}</span>` : ''}
-      ${afford}
-    </div>`;
+    shop = `<div class="vp-price">${vb(o.price, o.regular)}</div>
+      ${o.outAt ? `<p class="vp-leave" title="${esc(leaveText(o.outAt))}">${icons.clock}<span>Verlässt den Shop am ${esc(fmtLeave.format(new Date(o.outAt)))}</span></p>` : ''}
+      ${o.isBundle && !m.isBundle ? `<p class="vp-small">Heute im Paket <a href="#/offer/${encodeURIComponent(o.key)}">${esc(quoted(o.title))}</a></p>` : ''}
+      <a class="vp-shop" href="https://www.fortnite.com/item-shop?lang=de" target="_blank" rel="noopener">Im Shop auf Fortnite.com</a>
+      ${affordLine(o)}`;
   } else if (st.last != null) {
-    buy = `<div class="buyline"><span class="label">Gerade nicht im Shop</span><span style="font:400 var(--t-xl)/1 var(--f-display);text-transform:uppercase">Zuletzt ${esc(fmtAgo(st.since))}</span><span class="muted">am ${esc(fmtDate(st.last))}. Merk es dir – taucht es wieder auf, siehst du es im Shop und im Spind.</span></div>`;
+    shop = `<p class="vp-off">Gerade nicht im Shop · zuletzt ${esc(fmtAgo(st.since))}</p>`;
   } else {
-    buy = '<div class="buyline"><span class="label">Noch nie im Shop</span><span class="muted">Das kann ein Battle-Pass- oder Event-Item sein, eine Belohnung oder ein Leak, der noch nicht erschienen ist.</span></div>';
+    shop = `<p class="vp-off">${isItem ? 'Noch nie im Shop' : ''}</p>`;
   }
 
-  const history = st.count ? `<section style="display:grid;gap:12px">
-      <p class="label" style="margin:0">Shop-Historie</p>
-      <dl class="kv">
-        <dt>Erstes Mal</dt><dd>${esc(fmtDate(st.first))}</dd>
-        <dt>Zuletzt</dt><dd>${esc(fmtDate(st.last))} <span class="muted">(${esc(fmtAgo(st.since))})</span></dd>
-        <dt>Im Shop</dt><dd>${fmtNum(st.runs)}× · ${fmtNum(st.count)} Tage insgesamt</dd>
-        ${st.maxGap ? `<dt>Längste Pause</dt><dd>${esc(fmtSpan(st.maxGap))}</dd>` : ''}
-        ${st.runs > 1 && st.runList ? `<dt>Pause im Schnitt</dt><dd>${esc(fmtSpan(Math.round(avgGap(st.runList))))}</dd>` : ''}
-      </dl>
-      ${st.runList ? timeline(st.runList, m.colors[0]) : ''}
-      ${st.runList ? occurrences(st.runList) : ''}
-    </section>` : '';
+  const rows = [];
+  if (isItem) {
+    if (st.count || o) rows.push(['Quelle', 'Shop']);
+    if (s.chapter) rows.push(['Eingeführt', `Kapitel ${s.chapter}, Saison ${s.season}`]);
+    if (s.added) rows.push(['Erschienen', fmtDate(s.added)]);
+  }
+  if (st.last != null) rows.push(['Zuletzt gesehen', `${fmtDate(st.last)} (${fmtAgo(st.since)})`]);
+  if (st.maxGap) rows.push(['Längste Pause', fmtSpan(st.maxGap)]);
+  const occ = st.count ? `<div class="vp-row"><dt>Vorkommen:</dt><dd><button class="vp-occ" type="button" data-v-occ aria-expanded="false">${fmtNum(st.count)}${icons.chevron}</button></dd></div>` : '';
+  const info = rows.length || occ ? `<div class="vp-info">
+      <dl>${rows.map(([k, v]) => `<div class="vp-row"><dt>${esc(k)}:</dt><dd>${esc(v)}</dd></div>`).join('')}${occ}</dl>
+      ${st.count ? `<div class="vp-occ-list" data-v-occ-list hidden>${st.runList ? `${timeline(st.runList, m.colors[0])}${occurrences(st.runList)}` : `<p class="vp-small">${fmtNum(st.runs)}× im Shop, zuerst am ${esc(fmtDate(st.first))}.</p>`}</div>` : ''}
+    </div>` : '';
 
-  const bundle = m.isBundle ? `<section style="display:grid;gap:10px"><p class="label" style="margin:0">Im Paket</p>
-    <div class="bundle-items">${o.items.map((it) => `<a href="#/item/${encodeURIComponent(it.id)}" style="--c1:${it.colors[0]};--c3:${it.colors[2]}"><img src="${esc(it.images.icon || it.images.small || '')}" alt="" loading="lazy"><span>${esc(it.name)}</span><span class="faint">${esc(it.typeLabel || typeLabel(it.type))}</span></a>`).join('')}</div></section>` : '';
-
-  const alsoIn = !m.isBundle && o?.isBundle ? `<p class="muted" style="margin:0;font-size:var(--t-sm)">Gibt es heute im Paket <a href="#/offer/${encodeURIComponent(o.key)}">${esc(quoted(o.title))}</a>.</p>` : '';
+  const incl = o ? (m.isBundle ? o.items : o.items.filter((i) => i.id !== s?.id)) : [];
 
   $('[data-v-panel]', root).innerHTML = `
-    <div>
-      <p class="label" style="margin:0 0 8px">${esc([m.isBundle ? 'Paket' : s?.typeLabel, s?.set && !m.isBundle ? `Set: ${s.set}` : ''].filter(Boolean).join(' · '))}</p>
+    <div class="vp-head">
       <h2 id="viewer-title">${esc(m.title)}</h2>
+      <p class="vp-kind">${rarity ? `<span class="vp-rar" style="--c1:${m.colors[0]};--c3:${m.colors[2]}">${esc(rarity)}</span>` : ''}<span>${esc(typeTxt)}</span></p>
+      ${shop}
     </div>
-    <div class="viewer__tags">${tags.join('')}</div>
-    ${desc ? `<p class="desc">${esc(desc)}</p>` : ''}
-    ${buy}
-    ${s?.kind === 'track' && !m.isBundle ? `<div class="audio-line">${playBtn(s)}<p>30-Sekunden-Vorschau des Originals über Apple Music. Fährst du im Shop mit der Maus über einen Song, spielt er automatisch an.</p></div>` : ''}
-    ${alsoIn}
-    ${wishId ? `<div class="actions">
-      <button class="btn${wished ? ' btn--primary' : ''}" type="button" data-v-wish aria-pressed="${!!wished}">${icons.heart}<span>${wished ? 'Gemerkt' : 'Merken'}</span></button>
-      <button class="btn${owned ? ' btn--primary' : ''}" type="button" data-v-own aria-pressed="${!!owned}">${icons.check}<span>Besitze ich</span></button>
-      <button class="btn btn--ghost" type="button" data-v-copy>${icons.link}<span>Link kopieren</span></button>
+    ${desc ? `<p class="vp-desc">${esc(desc)}</p>` : ''}
+    ${s?.kind === 'track' && !m.isBundle ? `<div class="audio-line">${playBtn(s)}<p>30-Sekunden-Vorschau des Originals über Apple Music.</p></div>` : ''}
+    ${info}
+    ${wishId ? `<div class="vp-btns">
+      <button class="vp-btn${wished ? ' is-on' : ''}" type="button" data-v-wish aria-pressed="${wished}">${wished ? icons.check : icons.plus}<span>Wunschliste</span></button>
+      <button class="vp-btn${owned ? ' is-on' : ''}" type="button" data-v-own aria-pressed="${owned}">${owned ? icons.check : icons.plus}<span>Spind</span></button>
+      <button class="vp-icon" type="button" data-v-copy aria-label="Link kopieren" title="Link kopieren">${icons.link}</button>
     </div>` : ''}
-    ${bundle}
-    ${history}
-    ${s?.introText && !m.isBundle ? `<p class="label faint" style="margin:0">${esc(s.introText)}</p>` : ''}
-    ${s?.id && !m.isBundle ? `<p class="label faint" style="margin:0">ID: ${esc(s.id)}</p>` : ''}`;
+    ${incl.length ? `<section class="vp-sec"><h3>${m.isBundle ? 'Im Paket' : 'Enthält'}</h3><div class="vp-items">${incl.map(miniTile).join('')}</div></section>` : ''}
+    ${isItem && s.set ? `<section class="vp-sec" data-v-set hidden><h3>Teil des Sets <b>${esc(s.set)}</b></h3><div class="vp-items"></div></section>` : ''}
+    ${isItem && s.id ? `<p class="vp-id">ID: ${esc(s.id)}</p>` : ''}`;
+
+  if (isItem && s.set) fillSet(m);
+}
+
+/** Übrige Items aus demselben Set (aus dem Archiv-Index) */
+async function fillSet(m) {
+  const idx = await loadIndex().catch(() => null);
+  const box = root && $('[data-v-set]', root);
+  if (!idx || !box || lastModel !== m) return;
+  const order = (t) => (TYPE_ORDER.indexOf(t) + 1) || 99;
+  const list = idx.items
+    .filter((x) => x.set === m.subject.set && x.id !== m.subject.id)
+    .sort((a, b) => order(a.type) - order(b.type) || a.name.localeCompare(b.name, 'de'))
+    .slice(0, 30);
+  if (!list.length) return;
+  box.querySelector('.vp-items').innerHTML = list.map((x) => miniTile({ ...x, images: brImages(x.id) })).join('');
+  box.hidden = false;
 }
 
 /** Auftritte als Tabelle wie bei Fortnite.GG (neueste zuerst) */
@@ -232,12 +252,6 @@ function occurrences(runs) {
   }).join('');
   return `<table class="occ"><thead><tr><th>Im Shop</th><th>Zuletzt</th></tr></thead><tbody>${rows}</tbody></table>
     ${runs.length > MAX ? `<p class="faint" style="margin:0;font-size:var(--t-xs)">… und ${runs.length - MAX} weitere Male davor</p>` : ''}`;
-}
-
-function avgGap(runs) {
-  let sum = 0;
-  for (let i = 1; i < runs.length; i++) sum += runs[i].start - runs[i - 1].end;
-  return sum / (runs.length - 1);
 }
 
 function timeline(runs, color) {
@@ -309,46 +323,72 @@ async function mountStage(m, token, view = 'video') {
   else await mount3d(m, token);
 }
 
-const viewSwitch = (m, on) => (m.gg ? `<div class="seg" role="group" aria-label="Ansicht">
-    <button type="button" data-v-view="video" aria-pressed="${on === 'video'}">${icons.video}<span>Video</span></button>
-    <button type="button" data-v-view="3d" aria-pressed="${on === '3d'}">${icons.cube}<span>3D-Karte</span></button>
-  </div>` : '');
-const ytBtn = (m) => (m.video ? `<button class="btn btn--sm" type="button" data-v-video>${icons.play}<span>Trailer</span></button>` : '');
+const credit = (m) => `<a class="viewer__credit" href="${esc(ggPageUrl(m.gg))}" target="_blank" rel="noopener">Video: Fortnite.GG</a>`;
 
 // Outfits & Co. haben keine Tonspur – die Videos starten stumm, alles andere mit Ton
 const SILENT = new Set(['outfit', 'backpack', 'shoe', 'wrap', 'glider', 'contrail', 'sidekick', 'pet', 'petcarrier']);
 
+/** Video füllt die Bühne ganz aus; die Bühne nimmt das Seitenverhältnis des Videos an */
 function mountClip(m, token) {
   teardownStage();
+  const stage = $('[data-v-stage]', root);
   const body = $('[data-v-stage-body]', root);
   const hud = $('[data-v-hud]', root);
   const silent = SILENT.has(m.subject.type);
-  body.innerHTML = `<div class="viewer__clip">
-    <video src="${esc(ggVideoUrl(m.gg))}"${m.images[0] ? ` poster="${esc(m.images[0])}"` : ''} playsinline loop autoplay${silent ? ' muted' : ''} controls controlslist="nodownload noplaybackrate" disablepictureinpicture></video>
+  stage.classList.add('is-clip');
+  body.innerHTML = `<div class="viewer__clip" data-v-clip>
+    <video src="${esc(ggVideoUrl(m.gg))}"${m.images[0] ? ` poster="${esc(m.images[0])}"` : ''} playsinline loop autoplay muted disablepictureinpicture disableremoteplayback></video>
+    <span class="clip-state" aria-hidden="true">${icons.play}</span>
   </div>`;
   const v = body.querySelector('video');
+  v.addEventListener('loadedmetadata', () => {
+    if (v.videoWidth && v.videoHeight) stage.style.setProperty('--ar', (v.videoWidth / v.videoHeight).toFixed(4));
+  });
   v.addEventListener('error', () => {
     markNoVideo(m.gg);
     m.gg = null;
     if (token === current) mount3d(m, token);
   }, { once: true });
-  if (!silent) { stopAudio(); closeMini(); }
+  const sync = () => { body.querySelector('[data-v-clip]')?.classList.toggle('is-paused', v.paused); syncSound(v); };
+  v.addEventListener('play', sync);
+  v.addEventListener('pause', sync);
+  v.addEventListener('volumechange', sync);
+  if (!silent) {
+    stopAudio(); closeMini();
+    v.muted = false; // Klick zum Öffnen erlaubt Ton – sonst unten stumm weiter
+  }
   v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });
-  hud.innerHTML = `${viewSwitch(m, 'video')}${ytBtn(m)}
-    <a class="viewer__credit" href="${esc(ggPageUrl(m.gg))}" target="_blank" rel="noopener">Video: Fortnite.GG</a>`;
+  hud.innerHTML = `${credit(m)}
+    <span class="hud-right">
+      ${silent ? '' : `<button class="hud-btn" type="button" data-v-sound aria-label="Ton aus" title="Ton an/aus">${icons.volume}</button>`}
+      <button class="hud-btn hud-btn--txt" type="button" data-v-view="3d" title="Als 3D-Karte ansehen">3D</button>
+    </span>`;
+  sync();
+}
+
+function syncSound(v) {
+  const b = root?.querySelector('[data-v-sound]');
+  if (!b) return;
+  b.innerHTML = v.muted ? icons.mute : icons.volume;
+  b.setAttribute('aria-label', v.muted ? 'Ton an' : 'Ton aus');
+  b.classList.toggle('is-off', v.muted);
 }
 
 async function mount3d(m, token) {
   teardownStage();
+  const stage = $('[data-v-stage]', root);
   const body = $('[data-v-stage-body]', root);
   const hud = $('[data-v-hud]', root);
   const spec = cardSpec(m);
+  stage.classList.remove('is-clip');
+  stage.style.removeProperty('--ar');
   hud.innerHTML = `
-    ${viewSwitch(m, '3d')}
-    <button class="btn btn--sm" type="button" data-v-rotate aria-pressed="true">${icons.rotate}<span>Auto-Drehen</span></button>
-    <button class="btn btn--sm" type="button" data-v-flip>${icons.cube}<span>Umdrehen</span></button>
-    ${m.gg ? '' : m.video ? `<button class="btn btn--sm btn--primary" type="button" data-v-video>${icons.play}<span>${m.subject?.type === 'emote' ? 'Anhören & ansehen' : 'Im Spiel ansehen'}</span></button>` : ''}
-    <span class="viewer__hint"><span class="hint-long">Ziehen zum Drehen · Scrollen oder zwei Finger zum Zoomen · Doppelklick setzt zurück</span><span class="hint-short">Ziehen zum Drehen · zwei Finger zum Zoomen</span></span>`;
+    <span class="viewer__hint" title="Scrollen zum Zoomen · Doppelklick setzt zurück">Ziehen zum Drehen</span>
+    <span class="hud-right">
+      <button class="hud-btn" type="button" data-v-rotate aria-pressed="true" title="Auto-Drehen">${icons.rotate}</button>
+      <button class="hud-btn" type="button" data-v-flip title="Umdrehen">${icons.cube}</button>
+      ${m.gg ? '<button class="hud-btn hud-btn--txt" type="button" data-v-view="video" title="Zurück zum Video">Video</button>' : m.video ? `<button class="hud-btn hud-btn--txt" type="button" data-v-video title="Im Spiel ansehen (YouTube)">${icons.play}<span>Trailer</span></button>` : ''}
+    </span>`;
   body.innerHTML = '<div class="viewer__load">3D-Karte wird gebaut …</div>';
   try {
     const { mountCard } = await import('./card3d.js');
@@ -395,10 +435,11 @@ function showVideo(id) {
   stopAudio();
   closeMini();
   teardownStage();
+  $('[data-v-stage]', root).classList.remove('is-clip');
   const body = $('[data-v-stage-body]', root);
   body.innerHTML = `<div class="viewer__video"><iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?autoplay=1&rel=0&modestbranding=1" title="Item im Spiel (Showcase-Video)" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div>`;
   const hud = $('[data-v-hud]', root);
-  hud.innerHTML = `<button class="btn btn--sm btn--primary" type="button" data-v-back3d>${lastModel?.gg ? 'Zurück zum Video' : 'Zurück zur 3D-Karte'}</button>`;
+  hud.innerHTML = `<span class="hud-right"><button class="hud-btn hud-btn--txt" type="button" data-v-back3d>Zurück</button></span>`;
 }
 
 /* ---------- Aktionen ---------- */
@@ -418,6 +459,25 @@ async function onClick(e) {
   }
   if (t.closest('[data-v-back3d]')) {
     if (lastModel) mountStage(lastModel, current);
+    return;
+  }
+  if (t.closest('[data-v-sound]')) {
+    const v = root.querySelector('.viewer__clip video');
+    if (v) { v.muted = !v.muted; if (v.paused) v.play().catch(() => {}); }
+    return;
+  }
+  const clip = t.closest('[data-v-clip]');
+  if (clip) {
+    const v = clip.querySelector('video');
+    if (v.paused) v.play().catch(() => {}); else v.pause();
+    return;
+  }
+  const occBtn = t.closest('[data-v-occ]');
+  if (occBtn) {
+    const list = root.querySelector('[data-v-occ-list]');
+    const open = list.hidden;
+    list.hidden = !open;
+    occBtn.setAttribute('aria-expanded', String(open));
     return;
   }
   const view = t.closest('[data-v-view]');
