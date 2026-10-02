@@ -874,8 +874,6 @@ body.no-scroll .now { display: none; }
 .hud-btn--txt { padding: 0 13px; }
 .hud-btn--txt span { padding-top: .08em; }
 .hud-btn.is-off { color: rgba(255, 255, 255, .7); }
-.viewer__credit { font: 400 .95rem var(--f-display); letter-spacing: .04em; text-transform: uppercase; color: rgba(255, 255, 255, .5); text-decoration: none; padding: 6px 4px; text-shadow: 0 2px 6px rgba(0, 0, 0, .6); }
-.viewer__credit:hover { color: #fff; }
 .viewer__hint { font: 700 .62rem var(--f-ui); letter-spacing: .14em; text-transform: uppercase; color: rgba(255, 255, 255, .45); align-self: center; }
 .viewer__video { position: absolute; inset: 0; background: #000; display: grid; place-items: center; }
 .viewer__video iframe { width: 100%; aspect-ratio: 16 / 9; border: 0; }

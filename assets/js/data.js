@@ -276,4 +276,3 @@ export async function ggId(id) {
 }
 
 export const ggVideoUrl = (g, sd = false) => `https://fnggcdn.com/items/${g}/video${sd ? '-sd' : ''}.mp4`;
-export const ggPageUrl = (g) => `https://fortnite.gg/cosmetics?id=${g}`;

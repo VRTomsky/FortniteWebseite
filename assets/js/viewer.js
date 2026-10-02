@@ -3,7 +3,7 @@
 import { $, esc, fmtNum, fmtDate, fmtAgo, fmtSpan, fmtEur, icons, copyText, toast, todayNum, DAY } from './util.js';
 import { api } from './api.js';
 import { store } from './store.js';
-import { getShop, loadShop, normalizeBr, historyStats, cheapestOfferFor, loadIndex, brImages, ggId, ggVideoUrl, ggPageUrl } from './data.js';
+import { getShop, loadShop, normalizeBr, historyStats, cheapestOfferFor, loadIndex, brImages, ggId, ggVideoUrl } from './data.js';
 import { vb, snapOf, leaveText, playBtn } from './components.js';
 import { rarityColors, rarityImage, rarityLabel, typeLabel, TYPE_ORDER } from './labels.js';
 import { cheapestTopUps } from './vbmath.js';
@@ -323,8 +323,6 @@ async function mountStage(m, token, view = 'video') {
   else await mount3d(m, token);
 }
 
-const credit = (m) => `<a class="viewer__credit" href="${esc(ggPageUrl(m.gg))}" target="_blank" rel="noopener">Video: Fortnite.GG</a>`;
-
 // Outfits & Co. haben keine Tonspur – die Videos starten stumm, alles andere mit Ton
 const SILENT = new Set(['outfit', 'backpack', 'shoe', 'wrap', 'glider', 'contrail', 'sidekick', 'pet', 'petcarrier']);
 
@@ -358,8 +356,8 @@ function mountClip(m, token) {
     v.muted = false; // Klick zum Öffnen erlaubt Ton – sonst unten stumm weiter
   }
   v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });
-  hud.innerHTML = `${credit(m)}
-    <span class="hud-right">
+  // Das Fortnite.GG-Wasserzeichen ist im Video, die Quelle steht zusätzlich in der Fußzeile
+  hud.innerHTML = `<span class="hud-right">
       ${silent ? '' : `<button class="hud-btn" type="button" data-v-sound aria-label="Ton aus" title="Ton an/aus">${icons.volume}</button>`}
       <button class="hud-btn hud-btn--txt" type="button" data-v-view="3d" title="Als 3D-Karte ansehen">3D</button>
     </span>`;
