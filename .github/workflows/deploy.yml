@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write # nur für den Branch „data“, wenn Pages direkt aus dem Branch veröffentlicht
   pages: write
   id-token: write
   issues: write
@@ -42,13 +42,25 @@ jobs:
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=GitHub Pages ist noch aus::Settings → Pages → Source: „GitHub Actions“ wählen und diesen Workflow danach einmal neu starten."
+            echo "::notice title=Pages veröffentlicht direkt aus dem Branch::Die Daten (Archiv, Video-Zuordnung) landen im Branch „data“ und die Seite lädt sie von dort. Schneller: Settings → Pages → Source: „GitHub Actions“."
           fi
 
       - name: Daten holen, Archiv-Index bauen, Watchlist prüfen
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/build-data.mjs
+
+      - name: Daten in den Branch „data“ legen (Pages aus dem Branch)
+        if: steps.pages.outputs.enabled != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd data
+          git init -q -b data
+          git add -A
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -q -m "Daten $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" data:data
+          echo "Branch data aktualisiert: $(ls | tr '\n' ' ')"
 
       - name: Seite zusammenstellen
         run: |

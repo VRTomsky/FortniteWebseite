@@ -44,12 +44,18 @@ async function buildGg() {
   return { v: 1, built: new Date().toISOString(), map };
 }
 
+/** Letzte veröffentlichte Fassung: von der Seite oder (bei Pages aus dem Branch) aus dem Branch „data“ */
 async function previous(file) {
-  if (!siteUrl) return null;
-  try {
-    const res = await fetch(siteUrl + file, { signal: AbortSignal.timeout(30000) });
-    return res.ok ? await res.json() : null;
-  } catch { return null; }
+  const urls = [];
+  if (siteUrl) urls.push(siteUrl + file);
+  if (repo) urls.push(`https://raw.githubusercontent.com/${repo}/data/${file.replace(/^data\//, '')}`);
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
+      if (res.ok) return await res.json();
+    } catch { /* nächste Quelle */ }
+  }
+  return null;
 }
 
 function buildIndex(br) {

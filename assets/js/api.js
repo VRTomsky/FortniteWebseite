@@ -37,13 +37,28 @@ export const api = {
     get(`/v2/stats/br/v2?${q({ name, accountType, timeWindow })}`, { key, timeout: 20000 }),
 };
 
-/** Eigene Dateien (vom GitHub-Workflow erzeugt bzw. im Repo). null, wenn nicht vorhanden. */
-export async function local(path) {
+/**
+ * Wird die Seite direkt aus dem Branch veröffentlicht (Pages-Quelle „Deploy from a branch“), fehlt der
+ * Ordner data/. Der Workflow legt die Dateien dann im Branch „data“ ab – von dort per raw.githubusercontent.com.
+ */
+const RAW_DATA = (() => {
+  const owner = /^([a-z0-9-]+)\.github\.io$/i.exec(location.hostname)?.[1];
+  const repo = location.pathname.split('/').filter(Boolean)[0];
+  return owner && repo ? `https://raw.githubusercontent.com/${owner}/${repo}/data/` : null;
+})();
+
+async function getJson(url, opts) {
   try {
-    const res = await fetch(path, { cache: 'no-cache' });
-    if (!res.ok) return null;
-    return await res.json();
+    const res = await fetch(url, opts);
+    return res.ok ? await res.json() : null;
   } catch {
     return null;
   }
+}
+
+/** Eigene Dateien (vom GitHub-Workflow erzeugt bzw. im Repo). null, wenn nicht vorhanden. */
+export async function local(path) {
+  const own = await getJson(path, { cache: 'no-cache' });
+  if (own || !RAW_DATA || !path.startsWith('data/')) return own;
+  return getJson(RAW_DATA + path.slice(5));
 }
