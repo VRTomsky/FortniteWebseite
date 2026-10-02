@@ -3,7 +3,6 @@ import { $, esc, fmtNum, fmtDate } from '../util.js';
 import { api } from '../api.js';
 import { normalizeBr, historyStats, loadConfig, watchHit } from '../data.js';
 import { itemTile, skeletonTiles, errorBox, emptyBox } from '../components.js';
-import { typeLabel } from '../labels.js';
 
 let el;
 
@@ -53,10 +52,10 @@ async function load() {
     </ul>
     <div class="notice"><p>Diese Items stecken in den Spieldateien, sind aber noch nicht erschienen. Geleakte Items können sich noch ändern, später kommen oder nie veröffentlicht werden. Neue Leaks tauchen hier auf, sobald fortnite-api.com das jeweils neueste Update ausgelesen hat.</p></div>
     ${hits.length ? `<section class="section"><div class="section-head"><h2>Treffer aus deiner Watchlist</h2><span class="count">${hits.length}</span><span class="rule"></span></div>
-      <div class="grid grid--compact">${hits.map((i) => itemTile(i, { badge: `<span class="badge badge--watch" title="Watchlist: ${esc(i.hit)}">Watchlist</span>`, seen: false })).join('')}</div></section>` : ''}
+      <div class="grid grid--compact">${hits.map((i) => itemTile(i, { badge: `<span class="tag tag--watch" title="Watchlist: ${esc(i.hit)}">Watchlist</span>`, seen: false })).join('')}</div></section>` : ''}
     ${never.length ? sorted.map(([set, items]) => `<section class="section">
       <div class="section-head"><h2>${esc(set)}</h2><span class="count">${items.length}</span><span class="rule" aria-hidden="true"></span></div>
-      <div class="grid grid--compact">${items.map((i) => itemTile(i, { seen: false, badge: `<span class="badge">${esc(typeLabel(i.type))}</span>` })).join('')}</div>
+      <div class="grid grid--compact">${items.map((i) => itemTile(i, { seen: false })).join('')}</div>
     </section>`).join('') : emptyBox('Keine neuen Leaks', 'Im letzten ausgelesenen Update stecken keine Items, die noch nie im Shop waren.')}
     ${seen.length ? `<details class="panel"><summary class="label" style="cursor:pointer">Geänderte Items, die schon im Shop waren (${seen.length})</summary>
       <div class="grid grid--compact" style="margin-top:14px">${seen.map((i) => itemTile(i)).join('')}</div></details>` : ''}`;

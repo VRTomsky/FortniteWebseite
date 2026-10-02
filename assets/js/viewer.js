@@ -1,12 +1,13 @@
-// Detailfenster: schwarze Bühne mit 3D-Karte, Infos, Shop-Historie, Wunschliste/Spind.
+// Detailfenster: Bühne mit Video von Fortnite.GG (360°-Drehung, Emotes mit Ton) oder 3D-Karte, daneben Infos und Shop-Historie.
 import { $, esc, fmtNum, fmtDate, fmtAgo, fmtSpan, fmtEur, icons, copyText, toast, todayNum, DAY } from './util.js';
 import { api } from './api.js';
 import { store } from './store.js';
-import { getShop, loadShop, normalizeBr, historyStats, cheapestOfferFor, loadIndex, brImages } from './data.js';
+import { getShop, loadShop, normalizeBr, historyStats, cheapestOfferFor, loadIndex, brImages, ggId, ggVideoUrl, ggPageUrl } from './data.js';
 import { vb, snapOf, leaveText, playBtn } from './components.js';
 import { rarityColors, rarityImage, rarityLabel, typeLabel } from './labels.js';
 import { cheapestTopUps } from './vbmath.js';
 import { stop as stopAudio, closeMini } from './audio.js';
+import { stopAll as stopTileVideos, NO_VIDEO, hasNoVideo, markNoVideo } from './video.js';
 
 let root = null;
 let current = null;
@@ -191,6 +192,7 @@ function renderPanel(m) {
         ${st.runs > 1 && st.runList ? `<dt>Pause im Schnitt</dt><dd>${esc(fmtSpan(Math.round(avgGap(st.runList))))}</dd>` : ''}
       </dl>
       ${st.runList ? timeline(st.runList, m.colors[0]) : ''}
+      ${st.runList ? occurrences(st.runList) : ''}
     </section>` : '';
 
   const bundle = m.isBundle ? `<section style="display:grid;gap:10px"><p class="label" style="margin:0">Im Paket</p>
@@ -219,6 +221,19 @@ function renderPanel(m) {
     ${s?.id && !m.isBundle ? `<p class="label faint" style="margin:0">ID: ${esc(s.id)}</p>` : ''}`;
 }
 
+/** Auftritte als Tabelle wie bei Fortnite.GG (neueste zuerst) */
+function occurrences(runs) {
+  const t = todayNum();
+  const MAX = 8;
+  const rows = [...runs].reverse().slice(0, MAX).map((r) => {
+    const now = r.end >= t;
+    const range = r.start === r.end ? fmtDate(r.start) : `${fmtDate(r.start)} – ${now ? 'heute' : fmtDate(r.end)}`;
+    return `<tr${now ? ' class="is-now"' : ''}><td>${esc(range)}</td><td>${esc(now ? 'jetzt im Shop' : fmtAgo(t - r.end))}</td></tr>`;
+  }).join('');
+  return `<table class="occ"><thead><tr><th>Im Shop</th><th>Zuletzt</th></tr></thead><tbody>${rows}</tbody></table>
+    ${runs.length > MAX ? `<p class="faint" style="margin:0;font-size:var(--t-xs)">… und ${runs.length - MAX} weitere Male davor</p>` : ''}`;
+}
+
 function avgGap(runs) {
   let sum = 0;
   for (let i = 1; i < runs.length; i++) sum += runs[i].start - runs[i - 1].end;
@@ -236,7 +251,7 @@ function timeline(runs, color) {
   for (let y = y0 + 1; y <= y1; y++) {
     if (yearsSpan > 6 && (y - y0) % 2) continue;
     const xx = x(Date.UTC(y, 0, 1) / DAY);
-    ticks += `<line x1="${xx.toFixed(1)}" x2="${xx.toFixed(1)}" y1="10" y2="56" stroke="#222d48" stroke-width="1"/><text x="${(xx + 3).toFixed(1)}" y="72">${y}</text>`;
+    ticks += `<line x1="${xx.toFixed(1)}" x2="${xx.toFixed(1)}" y1="10" y2="56" stroke="#3a3d44" stroke-width="1"/><text x="${(xx + 3).toFixed(1)}" y="72">${y}</text>`;
   }
   const bars = runs.map((r) => {
     const a = x(r.start), b = x(r.end + 1);
@@ -244,7 +259,7 @@ function timeline(runs, color) {
   }).join('');
   const tx = x(t1);
   return `<svg class="timeline" viewBox="0 0 ${W} 80" role="img" aria-label="Shop-Auftritte von ${fmtDate(runs[0].start)} bis heute: ${runs.length} Mal">
-    <line x1="0" x2="${W - padR}" y1="34" y2="34" stroke="#18213a" stroke-width="28"/>
+    <line x1="0" x2="${W - padR}" y1="34" y2="34" stroke="#2d3036" stroke-width="28"/>
     ${ticks}${bars}
     <line x1="${tx.toFixed(1)}" x2="${tx.toFixed(1)}" y1="6" y2="58" stroke="#ffe23f" stroke-width="2"/>
     <text x="${(tx - 4).toFixed(1)}" y="16" text-anchor="end" style="fill:#ffe23f">heute</text>
@@ -281,14 +296,58 @@ function cardSpec(m) {
   };
 }
 
-async function mountStage(m, token) {
+/** Erst das Video (falls es eins gibt), sonst die 3D-Karte */
+async function mountStage(m, token, view = 'video') {
+  stopTileVideos();
+  if (m.gg === undefined) {
+    const canVideo = !m.isBundle && m.subject?.id && !NO_VIDEO.has(m.subject.type);
+    const g = canVideo ? await ggId(m.subject.id).catch(() => null) : null;
+    if (token !== current) return;
+    m.gg = g && !hasNoVideo(g) ? g : null;
+  }
+  if (view === 'video' && m.gg) mountClip(m, token);
+  else await mount3d(m, token);
+}
+
+const viewSwitch = (m, on) => (m.gg ? `<div class="seg" role="group" aria-label="Ansicht">
+    <button type="button" data-v-view="video" aria-pressed="${on === 'video'}">${icons.video}<span>Video</span></button>
+    <button type="button" data-v-view="3d" aria-pressed="${on === '3d'}">${icons.cube}<span>3D-Karte</span></button>
+  </div>` : '');
+const ytBtn = (m) => (m.video ? `<button class="btn btn--sm" type="button" data-v-video>${icons.play}<span>Trailer</span></button>` : '');
+
+// Outfits & Co. haben keine Tonspur – die Videos starten stumm, alles andere mit Ton
+const SILENT = new Set(['outfit', 'backpack', 'shoe', 'wrap', 'glider', 'contrail', 'sidekick', 'pet', 'petcarrier']);
+
+function mountClip(m, token) {
+  teardownStage();
+  const body = $('[data-v-stage-body]', root);
+  const hud = $('[data-v-hud]', root);
+  const silent = SILENT.has(m.subject.type);
+  body.innerHTML = `<div class="viewer__clip">
+    <video src="${esc(ggVideoUrl(m.gg))}"${m.images[0] ? ` poster="${esc(m.images[0])}"` : ''} playsinline loop autoplay${silent ? ' muted' : ''} controls controlslist="nodownload noplaybackrate" disablepictureinpicture></video>
+  </div>`;
+  const v = body.querySelector('video');
+  v.addEventListener('error', () => {
+    markNoVideo(m.gg);
+    m.gg = null;
+    if (token === current) mount3d(m, token);
+  }, { once: true });
+  if (!silent) { stopAudio(); closeMini(); }
+  v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });
+  hud.innerHTML = `${viewSwitch(m, 'video')}${ytBtn(m)}
+    <a class="viewer__credit" href="${esc(ggPageUrl(m.gg))}" target="_blank" rel="noopener">Video: Fortnite.GG</a>`;
+}
+
+async function mount3d(m, token) {
+  teardownStage();
   const body = $('[data-v-stage-body]', root);
   const hud = $('[data-v-hud]', root);
   const spec = cardSpec(m);
   hud.innerHTML = `
+    ${viewSwitch(m, '3d')}
     <button class="btn btn--sm" type="button" data-v-rotate aria-pressed="true">${icons.rotate}<span>Auto-Drehen</span></button>
     <button class="btn btn--sm" type="button" data-v-flip>${icons.cube}<span>Umdrehen</span></button>
-    ${m.video ? `<button class="btn btn--sm btn--primary" type="button" data-v-video>${icons.play}<span>${m.subject?.type === 'emote' ? 'Anhören & ansehen' : 'Im Spiel ansehen'}</span></button>` : ''}
+    ${m.gg ? '' : m.video ? `<button class="btn btn--sm btn--primary" type="button" data-v-video>${icons.play}<span>${m.subject?.type === 'emote' ? 'Anhören & ansehen' : 'Im Spiel ansehen'}</span></button>` : ''}
     <span class="viewer__hint"><span class="hint-long">Ziehen zum Drehen · Scrollen oder zwei Finger zum Zoomen · Doppelklick setzt zurück</span><span class="hint-short">Ziehen zum Drehen · zwei Finger zum Zoomen</span></span>`;
   body.innerHTML = '<div class="viewer__load">3D-Karte wird gebaut …</div>';
   try {
@@ -298,7 +357,7 @@ async function mountStage(m, token) {
     if (token !== current) { c.dispose(); return; }
     card = c;
     body.querySelector('.viewer__load')?.remove();
-    $('[data-v-rotate]', root).setAttribute('aria-pressed', c.auto);
+    $('[data-v-rotate]', root)?.setAttribute('aria-pressed', c.auto);
   } catch (err) {
     if (token !== current) return;
     console.warn('3D nicht verfügbar, zeige 2D-Karte:', err);
@@ -328,6 +387,8 @@ async function mountFallback(body, spec, hud) {
 function teardownStage() {
   card?.dispose();
   card = null;
+  const v = root?.querySelector('.viewer__clip video');
+  if (v) { v.pause(); v.removeAttribute('src'); v.load(); }
 }
 
 function showVideo(id) {
@@ -337,7 +398,7 @@ function showVideo(id) {
   const body = $('[data-v-stage-body]', root);
   body.innerHTML = `<div class="viewer__video"><iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?autoplay=1&rel=0&modestbranding=1" title="Item im Spiel (Showcase-Video)" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div>`;
   const hud = $('[data-v-hud]', root);
-  hud.innerHTML = '<button class="btn btn--sm btn--primary" type="button" data-v-back3d>Zurück zur 3D-Karte</button>';
+  hud.innerHTML = `<button class="btn btn--sm btn--primary" type="button" data-v-back3d>${lastModel?.gg ? 'Zurück zum Video' : 'Zurück zur 3D-Karte'}</button>`;
 }
 
 /* ---------- Aktionen ---------- */
@@ -357,6 +418,11 @@ async function onClick(e) {
   }
   if (t.closest('[data-v-back3d]')) {
     if (lastModel) mountStage(lastModel, current);
+    return;
+  }
+  const view = t.closest('[data-v-view]');
+  if (view) {
+    if (lastModel && view.getAttribute('aria-pressed') !== 'true') mountStage(lastModel, current, view.dataset.vView);
     return;
   }
   const s = getSnapFromPanel();

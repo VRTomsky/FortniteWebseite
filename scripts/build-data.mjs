@@ -1,4 +1,4 @@
-// Läuft im GitHub-Workflow (Node 22): baut data/index.json und data/meta.json
+// Läuft im GitHub-Workflow (Node 22): baut data/index.json, data/meta.json und data/gg.json
 // und öffnet Alarm-Issues, wenn Begriffe aus config/watch.json im Shop oder in den Spieldateien auftauchen.
 // Lokal testen: node scripts/build-data.mjs   (ohne GITHUB_TOKEN wird kein Issue erstellt; ALARM_DRY_RUN=1 zeigt Treffer)
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
@@ -27,6 +27,21 @@ async function get(path, tries = 3) {
     await new Promise((r) => setTimeout(r, 5000 * (i + 1)));
   }
   throw lastErr;
+}
+
+/** Zuordnung Epic-ID → Fortnite.GG-ID für die Videos (360°-Drehung, Emotes mit Ton). Ohne CORS, darum hier statt im Browser. */
+const GG_SKIP = /^(spray|spid|loadingscreen|lsid|musicpack|banner|homebasebannericon)_/i;
+async function buildGg() {
+  const res = await fetch('https://fortnite.gg/api/items.json', { headers: { 'User-Agent': 'shopradar-build (GitHub Pages fan site)' }, signal: AbortSignal.timeout(60000) });
+  if (!res.ok) throw new Error(`fortnite.gg → ${res.status}`);
+  const raw = await res.json();
+  const map = {};
+  for (const [id, n] of Object.entries(raw)) {
+    const g = Number(n);
+    if (!GG_SKIP.test(id) && Number.isInteger(g) && g > 0) map[id.toLowerCase()] = g;
+  }
+  if (Object.keys(map).length < 1000) throw new Error('fortnite.gg: unerwartet wenige Items');
+  return { v: 1, built: new Date().toISOString(), map };
 }
 
 async function previous(file) {
@@ -172,6 +187,21 @@ async function main() {
   if (index) {
     await writeFile('data/index.json', JSON.stringify(index));
     log(`Index: ${index.items.length} Items, ${(JSON.stringify(index).length / 1e6).toFixed(2)} MB`);
+  }
+
+  let gg = await buildGg().catch((e) => { log('Fortnite.GG-Zuordnung nicht geladen:', e.message); return null; });
+  if (!gg) { gg = await previous('data/gg.json'); if (gg) log('Fortnite.GG: vorherige Version übernommen'); }
+  if (gg) {
+    await writeFile('data/gg.json', JSON.stringify(gg));
+    // Kleiner Auszug nur für den heutigen Shop, damit die Shop-Seite nicht die ganze Liste laden muss
+    const today = {};
+    for (const e of shop?.entries || []) {
+      for (const k of ['brItems', 'tracks', 'instruments', 'cars', 'legoKits']) {
+        for (const x of e[k] || []) { const id = String(x.id).toLowerCase(); if (gg.map[id]) today[id] = gg.map[id]; }
+      }
+    }
+    await writeFile('data/gg-shop.json', JSON.stringify({ v: 1, built: gg.built, shop: shop?.date || null, map: today }));
+    log(`Fortnite.GG: ${Object.keys(gg.map).length} Items, davon ${Object.keys(today).length} im Shop`);
   }
 
   const season = br ? currentSeason(br, fresh?.build) : null;

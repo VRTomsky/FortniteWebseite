@@ -67,7 +67,7 @@ function render() {
         let badge = '';
         if (state.tab === 'wish' && shop) {
           const o = cheapestOfferFor(shop, snap.id);
-          if (o) badge = `<span class="badge badge--new">Im Shop · ${fmtNum(o.price)} V-Bucks</span>`;
+          if (o) badge = `<span class="tag tag--new">Im Shop · ${fmtNum(o.price)} V-Bucks</span>`;
         }
         return itemTile(it, { badge, seen: it.last !== undefined });
       }).join('')}</div>`

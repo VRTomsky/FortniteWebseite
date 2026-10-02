@@ -191,7 +191,7 @@ function draw() {
 }
 
 function tile(it) {
-  const badge = inShopToday(it.id) ? '<span class="badge badge--new">Heute im Shop</span>' : '';
+  const badge = inShopToday(it.id) ? '<span class="tag tag--new">Heute im Shop</span>' : '';
   return itemTile(it, { badge });
 }
 

@@ -1,41 +1,52 @@
-// Item-Shop: live, mit Sektionen, Filtern, Comebacks und Countdowns.
-import { $, $$, esc, fmtNum, fmtDateLong, fmtTime, icons, debounce, nextReset, lsGet, lsSet, norm } from '../util.js';
+// Item-Shop: Intro mit Countdown, Highlights, darunter der Shop wie bei Fortnite.GG –
+// Bereiche in der echten Reihenfolge aus dem Spiel, Zähler-Tabs, Filter/Sortieren/Einstellungen.
+import { $, $$, esc, fmtNum, fmtTime, fmtDateLong, icons, debounce, nextReset, lsGet, lsSet, norm } from '../util.js';
 import { api } from '../api.js';
-import { loadShop, onShop, getShop, loadConfig, watchHit } from '../data.js';
+import { loadShop, onShop, getShop, loadConfig, watchHit, REGIONAL } from '../data.js';
 import { offerTile, skeletonTiles, errorBox, emptyBox, vb } from '../components.js';
 import { typeLabel, TYPE_ORDER } from '../labels.js';
 import { store } from '../store.js';
+import { stopAll as stopTileVideos } from '../video.js';
 
-const KEY = 'sr.shop.v1';
-const COLLAPSED_DEFAULT = new Set(['JT', '_alc']);
+const KEY = 'sr.shop.v2';
+const PREVIEW = 12;
+const LONG_DEFAULT = new Set(['JT', REGIONAL]); // lange Bereiche zeigen erst 12 Kacheln
 const SORTS = [
   ['shop', 'Wie im Spiel'],
-  ['price-asc', 'Preis aufsteigend'],
-  ['price-desc', 'Preis absteigend'],
-  ['comeback', 'Längste Pause zuerst'],
+  ['price-asc', 'Preis: aufsteigend'],
+  ['price-desc', 'Preis: absteigend'],
+  ['comeback', 'Längste Wartezeit'],
   ['leaving', 'Geht bald'],
-  ['name', 'Name A–Z'],
+  ['name', 'Name: A bis Z'],
+  ['name-desc', 'Name: Z bis A'],
 ];
-const FLAGS = [
-  ['new', 'Zum ersten Mal'],
-  ['comeback', 'Comeback ≥ 100 Tage'],
+const TABS = [
+  ['all', 'Alle'],
+  ['new', 'Neu'],
+  ['wish', 'Meine Wunschliste'],
+  ['changed', 'Anders als gestern'],
+  ['leaving', 'Gehen heute'],
+  ['comeback', 'Längste Wartezeit'],
   ['deal', 'Rabatt'],
-  ['leaving', 'Geht heute'],
   ['afford', 'Kann ich mir leisten'],
-  ['wish', 'Wunschliste'],
 ];
 
 let el;
 let watch = null;
 const saved = lsGet(KEY, {});
-const state = { q: '', type: 'all', sort: saved.sort || 'shop', flags: {}, open: saved.open || {} };
-const persist = () => lsSet(KEY, { sort: state.sort, open: state.open });
+const state = {
+  q: '', tab: 'all', types: [], sort: saved.sort || 'shop',
+  size: saved.size || 'small', hideStrip: !!saved.hideStrip, hideTags: !!saved.hideTags,
+  closed: saved.closed || {}, all: saved.all || {},
+};
+const persist = () => lsSet(KEY, { sort: state.sort, size: state.size, hideStrip: state.hideStrip, hideTags: state.hideTags, closed: state.closed, all: state.all });
 
 const sectionKey = (s) => (s.id.startsWith('JT') ? 'JT' : s.id);
-const isOpen = (s) => state.open[sectionKey(s)] ?? !COLLAPSED_DEFAULT.has(sectionKey(s));
+const showsAll = (k) => state.all[k] ?? !LONG_DEFAULT.has(k);
 
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const MARK = '<svg viewBox="0 0 64 64" aria-hidden="true"><path fill="none" stroke="#ffe23f" stroke-width="6" stroke-linecap="round" d="M12 50a38 38 0 0 1 38-38"/><path fill="none" stroke="#ffe23f" stroke-width="6" stroke-linecap="round" opacity=".55" d="M24 50a26 26 0 0 1 26-26"/><circle cx="50" cy="50" r="8" fill="#ffe23f"/></svg>';
+const fmtDay = new Intl.DateTimeFormat('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
 let heroImg = null;
 let revealObs = null;
 
@@ -48,20 +59,18 @@ export async function init(container) {
     applyHeroImage();
   }).catch(() => {});
   window.addEventListener('scroll', onScroll, { passive: true });
-  if (!reduceMotion && matchMedia('(hover: hover) and (pointer: fine)').matches) {
-    el.addEventListener('pointermove', onTilt);
-    el.addEventListener('pointerout', onTiltOut);
-  }
   loadConfig().then((c) => { watch = c.watch; if (getShop()) renderResults(); });
   onShop(() => render());
   window.addEventListener('store', (e) => {
     if (!getShop() || el.hidden) return;
-    if (e.detail === 'settings' || e.detail === 'owned' || (e.detail === 'wish' && state.flags.wish)) renderResults();
-    if (e.detail === 'wish') renderWishHits();
+    if (e.detail === 'settings' || e.detail === 'owned' || (e.detail === 'wish' && state.tab === 'wish')) { renderTabs(); renderResults(); }
+    if (e.detail === 'wish') { renderWishHits(); renderTabs(); }
   });
   el.addEventListener('click', onClick);
   el.addEventListener('change', onChange);
   el.addEventListener('input', debounce(onInput, 140));
+  document.addEventListener('pointerdown', (e) => { if (!e.target.closest('.drop')) closeDrops(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrops(); });
   await load();
 }
 
@@ -161,7 +170,7 @@ function spotlight(shop) {
   </section>`;
 }
 
-/* ---------- Einflug & Kippen ---------- */
+/* ---------- Einflug beim Scrollen ---------- */
 function observeTiles() {
   if (reduceMotion || !('IntersectionObserver' in window)) return;
   const out = $('[data-results]', el);
@@ -179,29 +188,26 @@ function observeTiles() {
   $$('.tile', out).forEach((t) => revealObs.observe(t));
 }
 
-let tiltTile = null;
-function onTilt(e) {
-  const t = e.target.closest('.tile');
-  if (!t) return;
-  tiltTile = t;
-  const r = t.getBoundingClientRect();
-  const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
-  t.style.setProperty('--ry', `${((x - 0.5) * 10).toFixed(2)}deg`);
-  t.style.setProperty('--rx', `${((0.5 - y) * 8).toFixed(2)}deg`);
-  t.style.setProperty('--mx', `${(x * 100).toFixed(1)}%`);
-  t.style.setProperty('--my', `${(y * 100).toFixed(1)}%`);
-}
-function onTiltOut(e) {
-  const t = e.target.closest('.tile');
-  if (!t || t.contains(e.relatedTarget)) return;
-  t.style.removeProperty('--rx');
-  t.style.removeProperty('--ry');
-  if (tiltTile === t) tiltTile = null;
-}
 
 export function onShow() {
   if (getShop()) renderWishHits();
   onScroll();
+}
+
+/* ---------- Shop-Kopf wie bei Fortnite.GG ---------- */
+function counts(shop) {
+  const c = { all: shop.offers.length, new: 0, wish: 0, changed: 0, leaving: 0, comeback: null, deal: 0, afford: 0 };
+  const bal = store.balance;
+  for (const o of shop.offers) {
+    if (o.isNew) c.new++;
+    if (o.items.some((i) => store.isWished(i.id))) c.wish++;
+    if (o.changed) c.changed++;
+    if (o.leavesToday) c.leaving++;
+    if (o.discount) c.deal++;
+    if (bal != null && o.price <= bal) c.afford++;
+  }
+  if (bal == null) c.afford = null;
+  return c;
 }
 
 function render() {
@@ -211,40 +217,89 @@ function render() {
     ${hero(shop)}
     ${spotlight(shop)}
     <div data-wishhits></div>
-    <div class="toolbar" role="search" id="shop-start">
-      <div class="toolbar__row">
-        <div class="search">
-          ${icons.search}
-          <label class="sr-only" for="shop-q">Im Shop suchen</label>
-          <input class="input" id="shop-q" type="search" placeholder="Im Shop suchen …" value="${esc(state.q)}" autocomplete="off" data-q>
+    <section class="shop-head" id="shop-start" aria-labelledby="shop-title">
+      <h2 class="shop-head__title" id="shop-title">Fortnite Item-Shop</h2>
+      <p class="shop-head__date">${esc(fmtDay.format(new Date(shop.date || Date.now())))}</p>
+      <p class="shop-head__next">Neue Items in <b class="num" data-until-reset data-fmt="clock">--:--:--</b></p>
+      <div class="shop-tabs" role="tablist" aria-label="Schnellfilter" data-tabs></div>
+      <div class="drops">
+        <div class="drop" data-drop="filter">
+          <button class="drop__btn" type="button" aria-expanded="false" aria-haspopup="true">${icons.filter}<span>Filter</span><span class="drop__count" data-filter-count hidden></span>${icons.chevron}</button>
+          <div class="drop__menu drop__menu--wide" hidden data-types></div>
         </div>
-        <label class="sr-only" for="shop-sort">Sortierung</label>
-        <select class="select" id="shop-sort" data-sort>
-          ${SORTS.map(([v, l]) => `<option value="${v}"${state.sort === v ? ' selected' : ''}>${l}</option>`).join('')}
-        </select>
-        <span class="sep" aria-hidden="true"></span>
-        <div class="toolbar__flags">${FLAGS.map(([f, l]) => `<button class="chip" type="button" data-flag="${f}" aria-pressed="${!!state.flags[f]}">${l}</button>`).join('')}</div>
+        <div class="drop" data-drop="sort">
+          <button class="drop__btn" type="button" aria-expanded="false" aria-haspopup="true">${icons.sort}<span>Sortieren</span>${icons.chevron}</button>
+          <div class="drop__menu" hidden>${SORTS.map(([v, l]) => `<button class="drop__opt" type="button" data-sort="${v}" aria-pressed="${state.sort === v}">${l}</button>`).join('')}</div>
+        </div>
+        <div class="drop" data-drop="settings">
+          <button class="drop__btn" type="button" aria-expanded="false" aria-haspopup="true">${icons.gear}<span>Einstellungen</span>${icons.chevron}</button>
+          <div class="drop__menu" hidden data-settings></div>
+        </div>
+        <label class="search search--pill">
+          ${icons.search}
+          <span class="sr-only">Im Shop suchen</span>
+          <input class="input" type="search" placeholder="Im Shop suchen …" value="${esc(state.q)}" autocomplete="off" data-q>
+        </label>
       </div>
-      <div class="toolbar__row toolbar__row--scroll" data-types></div>
-    </div>
-    <div class="result-line"><p class="label" data-count></p></div>
+    </section>
+    <p class="result-line label" data-count></p>
     <div data-results></div>`;
   applyHeroImage();
+  renderTabs();
   renderTypes();
+  renderSettings();
   renderWishHits();
   renderResults();
   onScroll();
 }
 
+function renderTabs() {
+  const slot = $('[data-tabs]', el);
+  const shop = getShop();
+  if (!slot || !shop) return;
+  const c = counts(shop);
+  slot.innerHTML = TABS
+    .filter(([k]) => (k === 'deal' ? c.deal > 0 : k === 'afford' ? c.afford != null : true))
+    .map(([k, l]) => `<button class="shop-tab" type="button" role="tab" data-tab="${k}" aria-selected="${state.tab === k}">${c[k] != null ? `<b>${fmtNum(c[k])}</b> ` : ''}${l}</button>`)
+    .join('');
+}
+
 function renderTypes() {
   const shop = getShop();
-  const counts = new Map();
-  for (const o of shop.offers) counts.set(o.type, (counts.get(o.type) || 0) + 1);
-  const types = [...counts.keys()].sort((a, b) => (TYPE_ORDER.indexOf(a) + 1 || 99) - (TYPE_ORDER.indexOf(b) + 1 || 99));
-  $('[data-types]', el).innerHTML = [
-    `<button class="chip" type="button" data-type="all" aria-pressed="${state.type === 'all'}">Alles <span class="count">${fmtNum(shop.offers.length)}</span></button>`,
-    ...types.map((t) => `<button class="chip" type="button" data-type="${esc(t)}" aria-pressed="${state.type === t}">${esc(typeLabel(t, true))} <span class="count">${fmtNum(counts.get(t))}</span></button>`),
-  ].join('');
+  const slot = $('[data-types]', el);
+  if (!slot) return;
+  const cnt = new Map();
+  for (const o of shop.offers) cnt.set(o.type, (cnt.get(o.type) || 0) + 1);
+  const types = [...cnt.keys()].sort((a, b) => (TYPE_ORDER.indexOf(a) + 1 || 99) - (TYPE_ORDER.indexOf(b) + 1 || 99));
+  slot.innerHTML = `<p class="drop__label">Item-Typ</p>
+    <div class="drop__grid">${types.map((t) => `<label class="check"><input type="checkbox" data-type="${esc(t)}"${state.types.includes(t) ? ' checked' : ''}><span>${esc(typeLabel(t, true))}</span><i>${fmtNum(cnt.get(t))}</i></label>`).join('')}</div>
+    <button class="btn btn--sm btn--ghost" type="button" data-types-reset${state.types.length ? '' : ' disabled'}>Alle Typen zeigen</button>`;
+  const n = $('[data-filter-count]', el);
+  if (n) { n.hidden = !state.types.length; n.textContent = state.types.length; }
+}
+
+function renderSettings() {
+  const slot = $('[data-settings]', el);
+  if (!slot) return;
+  const hv = store.settings.hoverVideo !== false;
+  slot.innerHTML = `<p class="drop__label">Größe</p>
+    <div class="seg seg--small" role="group" aria-label="Kachelgröße">
+      <button type="button" data-size="small" aria-pressed="${state.size === 'small'}">Klein</button>
+      <button type="button" data-size="large" aria-pressed="${state.size === 'large'}">Groß</button>
+    </div>
+    <label class="check check--row"><input type="checkbox" data-set="hoverVideo"${hv ? ' checked' : ''}><span>Videos beim Drüberfahren</span></label>
+    <label class="check check--row"><input type="checkbox" data-set="hideStrip"${state.hideStrip ? ' checked' : ''}><span>Restzeit ausblenden</span></label>
+    <label class="check check--row"><input type="checkbox" data-set="hideTags"${state.hideTags ? ' checked' : ''}><span>Hinweise ausblenden</span></label>`;
+}
+
+function closeDrops(except) {
+  $$('.drop', el).forEach((d) => {
+    if (d === except) return;
+    d.classList.remove('is-open');
+    d.querySelector('.drop__btn')?.setAttribute('aria-expanded', 'false');
+    const m = d.querySelector('.drop__menu');
+    if (m) m.hidden = true;
+  });
 }
 
 function renderWishHits() {
@@ -255,45 +310,54 @@ function renderWishHits() {
   if (!hits.length) { slot.innerHTML = ''; return; }
   slot.innerHTML = `<div class="banner--wish">
     <p><strong>Wunschliste</strong>${hits.length === 1 ? 'Ein Item von deiner Wunschliste ist' : `${hits.length} Items von deiner Wunschliste sind`} heute im Shop: ${hits.map((h) => `<a href="#/item/${encodeURIComponent(h.id)}">${esc(h.name)}</a>`).join(', ')}.</p>
-    <button class="btn btn--sm" type="button" data-flag-on="wish">Nur diese zeigen</button>
+    <button class="btn btn--sm" type="button" data-tab="wish">Nur diese zeigen</button>
   </div>`;
 }
 
 function matches(o, q) {
   if (q && !o.search.includes(q)) return false;
-  if (state.type !== 'all' && o.type !== state.type) return false;
-  const f = state.flags;
-  if (f.new && !o.isNew) return false;
-  if (f.comeback && !(o.comeback >= 100)) return false;
-  if (f.deal && !o.discount) return false;
-  if (f.leaving && !o.leavesToday) return false;
-  if (f.afford) { const b = store.balance; if (b == null || o.price > b) return false; }
-  if (f.wish && !o.items.some((i) => store.isWished(i.id))) return false;
-  return true;
+  if (state.types.length && !state.types.includes(o.type)) return false;
+  switch (state.tab) {
+    case 'new': return o.isNew;
+    case 'wish': return o.items.some((i) => store.isWished(i.id));
+    case 'changed': return o.changed;
+    case 'leaving': return o.leavesToday;
+    case 'comeback': return o.comeback != null;
+    case 'deal': return o.discount > 0;
+    case 'afford': { const b = store.balance; return b != null && o.price <= b; }
+    default: return true;
+  }
 }
 
 const SORT_FN = {
-  'price-asc': (a, b) => a.price - b.price,
-  'price-desc': (a, b) => b.price - a.price,
-  comeback: (a, b) => (b.comeback ?? -1) - (a.comeback ?? -1),
-  leaving: (a, b) => (a.outAt ?? Infinity) - (b.outAt ?? Infinity),
+  'price-asc': (a, b) => (a.price - b.price) || (a.order - b.order),
+  'price-desc': (a, b) => (b.price - a.price) || (a.order - b.order),
+  comeback: (a, b) => ((b.comeback ?? -1) - (a.comeback ?? -1)) || (a.order - b.order),
+  leaving: (a, b) => ((a.outAt ?? Infinity) - (b.outAt ?? Infinity)) || (a.order - b.order),
   name: (a, b) => a.title.localeCompare(b.title, 'de'),
+  'name-desc': (a, b) => b.title.localeCompare(a.title, 'de'),
 };
 
 function tileFor(o) {
   return offerTile(o, { watch: watchHit(watch, o.title, ...o.items.map((i) => `${i.name} ${i.set}`)) });
 }
 
+function gridClass() {
+  return ['grid', 'grid--shop', state.size === 'large' ? 'grid--large' : '', state.hideStrip ? 'no-strip' : '', state.hideTags ? 'no-tags' : ''].filter(Boolean).join(' ');
+}
+
 function renderResults() {
   const shop = getShop();
   const out = $('[data-results]', el);
   if (!shop || !out) return;
+  stopTileVideos();
   const q = norm(state.q);
   const list = shop.offers.filter((o) => matches(o, q));
   const filtered = list.length !== shop.offers.length;
+  const sort = state.tab === 'comeback' && state.sort === 'shop' ? 'comeback' : state.sort;
   $('[data-count]', el).textContent = filtered ? `${fmtNum(list.length)} von ${fmtNum(shop.offers.length)} Angeboten` : `${fmtNum(list.length)} Angebote in ${shop.sections.length} Bereichen`;
 
-  if (state.flags.afford && store.balance == null) {
+  if (state.tab === 'afford' && store.balance == null) {
     out.innerHTML = emptyBox('Guthaben fehlt', 'Trag oben rechts dein V-Bucks-Guthaben ein, dann zeigt dieser Filter alles, was du dir leisten kannst.');
     return;
   }
@@ -301,83 +365,123 @@ function renderResults() {
     out.innerHTML = emptyBox('Nichts gefunden', 'Mit diesen Filtern ist heute nichts im Shop. Nimm einen Filter raus oder such nach etwas anderem.', '<button class="btn" type="button" data-reset>Filter zurücksetzen</button>');
     return;
   }
-  if (state.sort !== 'shop') {
-    out.innerHTML = `<div class="grid">${[...list].sort(SORT_FN[state.sort]).map(tileFor).join('')}</div>`;
+  if (sort !== 'shop') {
+    out.innerHTML = `<div class="${gridClass()}">${[...list].sort(SORT_FN[sort]).map(tileFor).join('')}</div>`;
     observeTiles();
     return;
   }
   const visible = new Set(list.map((o) => o.key));
-  out.innerHTML = `<div style="display:grid;gap:34px">${shop.sections.map((s) => {
+  out.innerHTML = `<div class="sections">${shop.sections.map((s) => {
     const offers = s.offers.filter((o) => visible.has(o.key));
     if (!offers.length) return '';
-    const open = filtered || isOpen(s);
-    const PREVIEW = 12;
-    const shown = open ? offers : offers.slice(0, PREVIEW);
-    const canToggle = !filtered && offers.length > PREVIEW;
-    return `<section class="section" aria-labelledby="sec-${esc(s.id)}">
-      <div class="section-head">
-        <h2 id="sec-${esc(s.id)}">${esc(s.name)}</h2>
-        <span class="count">${fmtNum(offers.length)}</span>
-        <span class="rule" aria-hidden="true"></span>
-        ${canToggle ? `<button class="btn btn--ghost btn--sm toggle" type="button" data-toggle="${esc(sectionKey(s))}" aria-expanded="${open}">${open ? 'Weniger anzeigen' : `Alle ${fmtNum(offers.length)} anzeigen`}</button>` : ''}
-      </div>
-      <div class="grid">${shown.map(tileFor).join('')}</div>
+    const k = sectionKey(s);
+    const closed = !filtered && !!state.closed[k];
+    const all = filtered || showsAll(k);
+    const shown = all ? offers : offers.slice(0, PREVIEW);
+    const canMore = !filtered && offers.length > PREVIEW;
+    return `<section class="section${closed ? ' is-closed' : ''}" aria-labelledby="sec-${esc(s.id)}">
+      <h2 class="sec-head" id="sec-${esc(s.id)}">
+        <button type="button" data-collapse="${esc(k)}" aria-expanded="${!closed}">
+          <span>${esc(s.name)}</span><span class="sec-head__count">${fmtNum(offers.length)}</span><span class="arrow" aria-hidden="true"></span>
+        </button>
+      </h2>
+      ${s.id === REGIONAL ? '<p class="sec-note">Diese Angebote erscheinen nicht in jedem Land im Shop.</p>' : ''}
+      ${closed ? '' : `<div class="${gridClass()}">${shown.map(tileFor).join('')}</div>
+      ${canMore ? `<button class="more" type="button" data-more="${esc(k)}" aria-expanded="${all}">${all ? 'Weniger anzeigen' : `Alle ${fmtNum(offers.length)} anzeigen`}${icons.chevron}</button>` : ''}`}
     </section>`;
   }).join('')}</div>`;
   observeTiles();
 }
 
+function scrollToShop() {
+  const bar = $('#shop-start', el) || $('[data-results]', el);
+  const y = bar.getBoundingClientRect().top + window.scrollY - (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--topbar-h')) || 72) - 8;
+  window.scrollTo({ top: y, behavior: reduceMotion ? 'auto' : 'smooth' });
+}
+
 function onClick(e) {
   const t = e.target;
-  if (t.closest('[data-scroll-shop]')) {
-    const bar = $('#shop-start', el) || $('[data-results]', el);
-    const y = bar.getBoundingClientRect().top + window.scrollY - (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--topbar-h')) || 72) + 2;
-    window.scrollTo({ top: y, behavior: reduceMotion ? 'auto' : 'smooth' });
-    return;
-  }
+  if (t.closest('[data-scroll-shop]')) { scrollToShop(); return; }
   if (t.closest('[data-retry]')) { el.innerHTML = hero() + skeletonTiles(12); applyHeroImage(); load(); return; }
-  const flag = t.closest('[data-flag]');
-  if (flag) {
-    const f = flag.dataset.flag;
-    state.flags[f] = !state.flags[f];
-    flag.setAttribute('aria-pressed', state.flags[f]);
+  const dropBtn = t.closest('.drop__btn');
+  if (dropBtn) {
+    const d = dropBtn.closest('.drop');
+    const open = !d.classList.contains('is-open');
+    closeDrops(d);
+    d.classList.toggle('is-open', open);
+    dropBtn.setAttribute('aria-expanded', String(open));
+    d.querySelector('.drop__menu').hidden = !open;
+    return;
+  }
+  const tab = t.closest('[data-tab]');
+  if (tab) {
+    state.tab = tab.dataset.tab;
+    renderTabs();
+    renderResults();
+    if (!tab.closest('.shop-head')) scrollToShop();
+    return;
+  }
+  const sort = t.closest('[data-sort]');
+  if (sort) {
+    state.sort = sort.dataset.sort;
+    persist();
+    $$('[data-sort]', el).forEach((b) => b.setAttribute('aria-pressed', b.dataset.sort === state.sort));
+    closeDrops();
     renderResults();
     return;
   }
-  const on = t.closest('[data-flag-on], [data-quick]');
-  if (on) {
-    const f = on.dataset.flagOn || on.dataset.quick;
-    state.flags = { [f]: true };
-    el.querySelectorAll('[data-flag]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.flag === f));
-    renderResults();
-    $('#shop-start', el)?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
-    return;
-  }
-  const type = t.closest('[data-type]');
-  if (type) {
-    state.type = type.dataset.type;
-    el.querySelectorAll('[data-type]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.type === state.type));
+  const size = t.closest('[data-size]');
+  if (size) {
+    state.size = size.dataset.size;
+    persist();
+    renderSettings();
     renderResults();
     return;
   }
-  const tog = t.closest('[data-toggle]');
-  if (tog) {
-    const k = tog.dataset.toggle;
-    const s = getShop().sections.find((x) => sectionKey(x) === k);
-    state.open[k] = !(s && isOpen(s));
+  if (t.closest('[data-types-reset]')) {
+    state.types = [];
+    renderTypes();
+    renderResults();
+    return;
+  }
+  const col = t.closest('[data-collapse]');
+  if (col) {
+    const k = col.dataset.collapse;
+    state.closed[k] = !state.closed[k];
+    if (!state.closed[k]) delete state.closed[k];
     persist();
     renderResults();
     return;
   }
+  const more = t.closest('[data-more]');
+  if (more) {
+    const k = more.dataset.more;
+    const next = !showsAll(k);
+    state.all[k] = next;
+    persist();
+    renderResults();
+    if (!next) more.closest('.section')?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+    return;
+  }
   if (t.closest('[data-reset]')) {
-    state.q = ''; state.type = 'all'; state.flags = {};
+    state.q = ''; state.tab = 'all'; state.types = [];
     render();
   }
 }
 
 function onChange(e) {
-  if (e.target.matches('[data-sort]')) {
-    state.sort = e.target.value;
+  const t = e.target;
+  if (t.matches('[data-type]')) {
+    const v = t.dataset.type;
+    state.types = t.checked ? [...new Set([...state.types, v])] : state.types.filter((x) => x !== v);
+    renderTypes();
+    renderResults();
+    return;
+  }
+  if (t.matches('[data-set]')) {
+    const k = t.dataset.set;
+    if (k === 'hoverVideo') { store.setSettings({ hoverVideo: t.checked ? undefined : false }); if (!t.checked) stopTileVideos(); return; }
+    state[k] = t.checked;
     persist();
     renderResults();
   }
@@ -389,4 +493,3 @@ function onInput(e) {
     renderResults();
   }
 }
-

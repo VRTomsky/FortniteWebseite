@@ -2,8 +2,9 @@
 import { $, $$, esc, fmtClock, fmtNum, fmtShort, nextReset, toast, icons } from './util.js';
 import { store } from './store.js';
 import { loadShop, onShop, getShop, pollForNewShop } from './data.js';
-import { getSnap, leaveText, leaveShort } from './components.js';
-import { playTrack, leaveHover, openMini, onAudio, isMissing } from './audio.js';
+import { getSnap, leaveText, stripTime } from './components.js';
+import { playTrack, leaveHover, onAudio, isMissing } from './audio.js';
+import { startTile, leaveTile, onVideo, videoState, stopAll as stopTileVideos, fallback as videoFallback } from './video.js';
 
 const VIEWS = {
   shop: { title: 'Item-Shop', load: () => import('./views/shop.js') },
@@ -33,7 +34,7 @@ function parseHash() {
 
 async function showView(name) {
   if (!VIEWS[name]) name = 'shop';
-  if (active && active !== name) scrollPos[active] = window.scrollY;
+  if (active && active !== name) { scrollPos[active] = window.scrollY; stopTileVideos(); }
   for (const k of Object.keys(mounted)) mounted[k].el.hidden = k !== name;
   $$('[data-nav]').forEach((a) => (a.dataset.nav === name ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current')));
   document.title = `${VIEWS[name].title} · Shopradar`;
@@ -155,11 +156,11 @@ function tickSlow() {
     el.textContent = leaveText(t);
     el.classList.toggle('is-soon', t - now < 86400000);
   });
-  $$('[data-until][data-fmt="leave-short"]').forEach((el) => {
+  $$('[data-until][data-fmt="strip"]').forEach((el) => {
     const t = Number(el.dataset.until);
-    el.textContent = leaveShort(t);
-    el.title = leaveText(t);
-    el.classList.toggle('is-soon', t - now < 86400000);
+    el.textContent = stripTime(t);
+    el.parentElement.title = leaveText(t);
+    el.parentElement.classList.toggle('is-soon', t - now < 86400000);
   });
   $$('[data-until][data-fmt="short"]').forEach((el) => { el.textContent = fmtShort(Number(el.dataset.until) - now); });
 }
@@ -226,27 +227,41 @@ function checkWishHits(shop) {
   return hits;
 }
 
-/* ---------- Audio: Songs anspielen beim Hover, Klick = Play/Pause ---------- */
+/* ---------- Beim Drüberfahren: Songs spielen an, Kacheln mit Video (Fortnite.GG) bewegen sich ---------- */
 const metaOf = (btn) => ({ key: btn.dataset.key, title: btn.dataset.title, artist: btn.dataset.artist, art: btn.dataset.art });
 let hoverTimer = null;
-let hoverKey = null;
+let hoverTile = null;
 const finePointer = matchMedia('(hover: hover) and (pointer: fine)');
 document.addEventListener('pointerover', (e) => {
   if (e.pointerType !== 'mouse' || !finePointer.matches) return;
-  const tile = e.target.closest('[data-track-tile]');
-  if (!tile || tile.dataset.trackTile === hoverKey) return;
-  hoverKey = tile.dataset.trackTile;
+  const tile = e.target.closest('[data-track-tile], [data-vid]');
+  if (!tile || tile === hoverTile) return;
+  hoverTile = tile;
   clearTimeout(hoverTimer);
-  const btn = tile.querySelector('[data-play="track"]');
-  if (!btn || isMissing(metaOf(btn))) return;
-  hoverTimer = setTimeout(() => playTrack(metaOf(btn), { mode: 'hover' }), 420);
+  if (tile.dataset.trackTile) {
+    const btn = tile.querySelector('[data-play="track"]');
+    if (!btn || isMissing(metaOf(btn)) || videoState().playing) return;
+    hoverTimer = setTimeout(() => playTrack(metaOf(btn), { mode: 'hover' }), 420);
+  } else if (store.settings.hoverVideo !== false) {
+    hoverTimer = setTimeout(() => startTile(tile, 'hover'), 260);
+  }
 });
 document.addEventListener('pointerout', (e) => {
-  const tile = e.target.closest('[data-track-tile]');
+  const tile = e.target.closest('[data-track-tile], [data-vid]');
   if (!tile || tile.contains(e.relatedTarget)) return;
   clearTimeout(hoverTimer);
-  leaveHover(tile.dataset.trackTile);
-  if (hoverKey === tile.dataset.trackTile) hoverKey = null;
+  if (tile.dataset.trackTile) leaveHover(tile.dataset.trackTile);
+  else leaveTile(tile);
+  if (hoverTile === tile) hoverTile = null;
+});
+onVideo((s) => {
+  $$('[data-play="video"]').forEach((b) => {
+    const mine = s.tile && s.tile.contains(b);
+    const st = mine ? (s.loading ? 'loading' : s.playing ? 'playing' : 'paused') : 'idle';
+    if (b.dataset.state !== st) b.dataset.state = st;
+    b.style.setProperty('--p', mine ? s.p.toFixed(4) : 0);
+    b.setAttribute('aria-pressed', mine && s.playing ? 'true' : 'false');
+  });
 });
 onAudio((s) => {
   $$('[data-play="track"]').forEach((b) => {
@@ -264,8 +279,10 @@ document.addEventListener('click', (e) => {
   if (play) {
     e.preventDefault();
     e.stopPropagation();
-    if (play.dataset.play === 'track') playTrack(metaOf(play), { mode: 'click' });
-    else openMini({ video: play.dataset.video, title: play.dataset.title });
+    if (play.dataset.play === 'track') { playTrack(metaOf(play), { mode: 'click' }); return; }
+    const tile = play.closest('[data-vid]');
+    if (tile) startTile(tile, 'click').then((ok) => { if (!ok) videoFallback(tile); });
+    else videoFallback(play.closest('.tile, .audio-line') || play.parentElement);
     return;
   }
   const fav = e.target.closest('[data-fav]');

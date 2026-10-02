@@ -80,6 +80,9 @@ function pickMain(items) {
 
 const stripTags = (s) => String(s || '').replace(/<[^>]*>/g, '');
 const tileSpan = (s) => Math.min(4, Math.max(1, Number(/Size_(\d)_x/.exec(s || '')?.[1]) || 1));
+/** Reihe innerhalb eines Shop-Bereichs: "5Nights.99" steht im Spiel über "5Nights.98" */
+const rowOf = (layoutId) => Number(/\.(\d+)$/.exec(layoutId || '')?.[1]) || 0;
+export const REGIONAL = '_alc';
 
 function offerColors(e, main) {
   const c1 = hex(e.colors?.color1), c3 = hex(e.colors?.color3), c2 = hex(e.colors?.color2);
@@ -87,7 +90,7 @@ function offerColors(e, main) {
   return main?.colors || rarityColors('common');
 }
 
-export function normalizeOffer(e, i, resetAt) {
+export function normalizeOffer(e, i, resetAt, shopDay = todayNum()) {
   const items = [
     ...(e.brItems || []).map(normalizeBr),
     ...(e.tracks || []).map(normalizeTrack),
@@ -124,8 +127,12 @@ export function normalizeOffer(e, i, resetAt) {
     banner: stripTags(e.banner?.value), offerTag: stripTags(e.offerTag?.text),
     inDate: e.inDate || null, outDate: e.outDate || null, outAt,
     leavesToday: outAt != null && outAt <= resetAt + 60000,
-    section: e.layout ? { id: e.layout.id, name: e.layout.name, index: e.layout.index ?? 999 } : { id: '_alc', name: 'Einzeln erhältlich', index: 9999 },
-    sortPriority: e.sortPriority ?? 0,
+    section: e.layout
+      ? { id: e.layout.id, name: String(e.layout.name || '').trim() || 'Shop', rank: Number(e.layout.rank) || 0 }
+      : { id: REGIONAL, name: 'Regionale Angebote', rank: -Infinity },
+    row: rowOf(e.layoutId),
+    sortPriority: Number(e.sortPriority) || 0,
+    changed: !hist.includes(shopDay - 1),
     span: tileSpan(e.tileSize),
     colors: offerColors(e, main),
     pattern: main?.series?.image || null,
@@ -137,14 +144,17 @@ export function normalizeOffer(e, i, resetAt) {
 
 export function normalizeShop(data) {
   const resetAt = nextReset();
-  const offers = (data.entries || []).map((e, i) => normalizeOffer(e, i, resetAt)).filter((o) => o.items.length || o.isBundle);
+  const shopDay = data.date ? dayNum(data.date) : todayNum();
+  const offers = (data.entries || []).map((e, i) => normalizeOffer(e, i, resetAt, shopDay)).filter((o) => o.items.length || o.isBundle);
   const sectionMap = new Map();
   for (const o of offers) {
-    if (!sectionMap.has(o.section.id)) sectionMap.set(o.section.id, { ...o.section, offers: [] });
+    if (!sectionMap.has(o.section.id)) sectionMap.set(o.section.id, { ...o.section, first: o.index, offers: [] });
     sectionMap.get(o.section.id).offers.push(o);
   }
-  const sections = [...sectionMap.values()].sort((a, b) => a.index - b.index);
-  for (const s of sections) s.offers.sort((a, b) => (b.sortPriority - a.sortPriority) || (a.index - b.index));
+  // Reihenfolge wie im Spiel: Bereiche nach Rang, darin Reihe für Reihe, in der Reihe nach Priorität
+  const sections = [...sectionMap.values()].sort((a, b) => (b.rank - a.rank) || (a.first - b.first));
+  for (const s of sections) s.offers.sort((a, b) => (b.row - a.row) || (b.sortPriority - a.sortPriority) || (a.index - b.index));
+  sections.forEach((s, si) => s.offers.forEach((o, oi) => { o.order = si * 10000 + oi; }));
 
   const byItem = new Map();
   for (const o of offers) for (const it of o.items) {
@@ -246,3 +256,24 @@ export function watchHit(watch, ...texts) {
   const hay = ` ${norm(texts.join(' '))} `;
   return kws.find((k) => hay.includes(` ${k} `)) || null;
 }
+
+/* ---------- Fortnite.GG-Videos (Zuordnung kommt vom Workflow: data/gg-shop.json + data/gg.json) ---------- */
+
+let ggShopPromise = null;
+let ggFullPromise = null;
+const ggMap = (raw) => (raw?.map && typeof raw.map === 'object' ? raw.map : null);
+const loadGgShop = () => (ggShopPromise ||= local('data/gg-shop.json').then(ggMap).catch(() => null));
+const loadGgFull = () => (ggFullPromise ||= local('data/gg.json').then(ggMap).catch(() => null));
+
+/** Fortnite.GG-Nummer zu einer Epic-ID (oder null) */
+export async function ggId(id) {
+  if (!id) return null;
+  const k = String(id).toLowerCase();
+  const today = await loadGgShop();
+  if (today?.[k]) return today[k];
+  const all = await loadGgFull();
+  return Number(all?.[k]) || null;
+}
+
+export const ggVideoUrl = (g, sd = false) => `https://fnggcdn.com/items/${g}/video${sd ? '-sd' : ''}.mp4`;
+export const ggPageUrl = (g) => `https://fortnite.gg/cosmetics?id=${g}`;

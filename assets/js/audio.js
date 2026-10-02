@@ -1,4 +1,4 @@
-// Song-Vorschau (30 s Original über die iTunes-Suche) und Emote-Videos (offizielles Showcase-Video im sichtbaren Mini-Player).
+// Song-Vorschau (30 s Original über die iTunes-Suche) und Mini-Player für Emote-Videos ohne Fortnite.GG-Video (YouTube).
 import { esc, norm, lsGet, lsSet, toast, icons } from './util.js';
 
 const CACHE_KEY = 'sr.previews.v1';
@@ -71,13 +71,14 @@ export async function playTrack(meta, { mode = 'click' } = {}) {
   if (mode === 'hover' && current?.mode === 'click' && current.key !== meta.key) return;
   if (current?.key === meta.key) {
     if (mode === 'hover') return;
-    if (current.mode === 'hover') { current.mode = 'click'; if (audio) audio.volume = 1; if (audio?.paused) await audio.play().catch(() => {}); renderNow(); emit(); return; }
+    if (current.mode === 'hover') { current.mode = 'click'; window.dispatchEvent(new Event('sr-audio')); if (audio) audio.volume = 1; if (audio?.paused) await audio.play().catch(() => {}); renderNow(); emit(); return; }
     if (audio?.paused) await audio.play().catch(() => {}); else audio?.pause();
     emit();
     return;
   }
   closeMini();
   stop(true);
+  if (mode === 'click') window.dispatchEvent(new Event('sr-audio'));
   current = { ...meta, mode, loading: true };
   emit();
   let found = null;
@@ -171,6 +172,7 @@ onAudio((s) => {
 /* ---------- Mini-Player für Emote-Videos ---------- */
 export function openMini({ video, title }) {
   stop();
+  window.dispatchEvent(new Event('sr-audio'));
   const r = root();
   if (!r) return;
   closeMini();

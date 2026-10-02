@@ -7,10 +7,11 @@ Fan-Webseite für den Fortnite Item-Shop: tägliche Rotation live, wann ein Item
 | Bereich | Was es kann |
 |---|---|
 | **Intro** | Vollbild-Start mit aktuellem Saison-Artwork, großem Countdown bis zum Shop-Wechsel, Highlights-Band; beim Scrollen Parallax und einfliegende Kacheln |
-| **Shop** | Live-Shop mit allen Sektionen, Countdown bis zum Shop-Wechsel (02:00 Uhr deutscher Sommerzeit), „Zum ersten Mal“- und „Comeback nach X Tagen“-Markierungen, Filter (Typ, Neu, Comeback, Rabatt, geht heute, leistbar, Wunschliste), Sortierung, „noch X Tage“-Countdown je Angebot |
-| **Songs & Emotes** | Jam-Songs: Maus drüber = Song spielt an, Klick = Play/Pause mit Fortschrittsring und „Läuft gerade“-Leiste (30-Sekunden-Vorschau des Originals über die iTunes-Suche). Emotes: Play-Knopf öffnet das offizielle Showcase-Video mit Ton im Mini-Player |
+| **Shop** | Aufgebaut wie bei Fortnite.GG: Bereiche in genau der Reihenfolge wie im Spiel (Rang des Bereichs, dann Reihe für Reihe), einklappbar; Tabs mit Zählern (Neu, Wunschliste, Anders als gestern, Gehen heute, Längste Wartezeit, Rabatt, leistbar), Filter nach Typ, Sortieren, Einstellungen (Kachelgröße, Videos, Restzeit), Suche; unter jeder Kachel Restzeit und „zuletzt vor X Tagen“ |
+| **Videos** | Von Fortnite.GG: Outfits, Rucksäcke, Spitzhacken & Co. drehen sich beim Drüberfahren (360°), Emotes tanzen mit Ton; in der Item-Ansicht das Video in voller Größe mit Steuerung |
+| **Songs & Emotes** | Jam-Songs: Maus drüber = Song spielt an, Klick = Play/Pause mit Fortschrittsring und „Läuft gerade“-Leiste (30-Sekunden-Vorschau des Originals über die iTunes-Suche). Emotes: Maus drüber = Tanz mit Ton, Play-Knopf hält das Video fest |
 | **Archiv** | Alle ~16.400 Cosmetics durchsuchen; sortieren nach längster Pause, zuletzt im Shop, Häufigkeit; Filter nach Typ, Seltenheit, Kapitel, Shop-Status |
-| **Item-Ansicht** | Schwarze Bühne mit 3D-Sammelkarte (ziehen = drehen, scrollen = zoomen, Rückseite mit Daten), Showcase-Video aus dem Spiel, komplette Shop-Historie mit Zeitleiste, Preis und was dir mit deinem Guthaben fehlt |
+| **Item-Ansicht** | Video (360° bzw. Emote mit Ton) oder 3D-Sammelkarte (ziehen = drehen, scrollen = zoomen, Rückseite mit Daten), Trailer, komplette Shop-Historie mit Zeitleiste und Tabelle aller Auftritte, Preis und was dir mit deinem Guthaben fehlt |
 | **Leaks** | Neue Items aus dem letzten Update, die noch nie im Shop waren |
 | **Season** | Aktuelles Kapitel/Saison mit Fortschritt und Countdown, Events, In-Game-News, aktuelle Karte, „Neu seit deiner Pause“ |
 | **V-Bucks** | Was fehlt mir? Günstigste Paket-Kombination (Preise ab 19.03.2026), Epic-Rewards, Angebots-Check für Guthabenkarten, Spartipps |
@@ -52,13 +53,15 @@ Lokal fehlt der Archiv-Index (`data/index.json` erzeugt nur der Workflow); das A
 - Reines HTML/CSS/JavaScript (ES-Module), kein Build-Schritt. Three.js für die 3D-Karte kommt per Import-Map von jsDelivr.
 - Daten: [fortnite-api.com](https://fortnite-api.com) (Shop mit `responseFlags=4` für die Shop-Historie, Cosmetics, Leaks, News, Karte, Stats).
 - Song-Vorschauen: iTunes Search API (30-Sekunden-Previews, CORS offen, kein Key). Die Fortnite-API liefert selbst kein Audio.
-- Emote-Ton: offizielle Showcase-Videos (YouTube, nocookie-Einbettung). YouTube erlaubt keine Tonwiedergabe ohne sichtbares Video, deshalb der Mini-Player.
+- Videos: [Fortnite.GG](https://fortnite.gg) (`fnggcdn.com/items/<id>/video.mp4`, kleine Fassung `video-sd.mp4` für die Kacheln). Die Zuordnung Epic-ID → Fortnite.GG-ID holt der Workflow aus `fortnite.gg/api/items.json` (ohne CORS, darum nicht im Browser) und legt sie als `data/gg.json` bzw. `data/gg-shop.json` ab. Gibt es kein Video, zeigt die Seite Bild bzw. 3D-Karte.
+- Emote-Ton ohne Fortnite.GG-Video: offizielles Showcase-Video (YouTube, nocookie-Einbettung) im Mini-Player.
+- Shop-Reihenfolge: Bereiche nach `layout.rank` (absteigend), darin Reihen nach der Endung der `layoutId` (`.99` vor `.98`), in der Reihe nach `sortPriority`.
 - Schrift: Burbank Big Condensed, wenn lokal installiert (siehe `assets/fonts/README.md`), sonst Anton; UI-Text in Plus Jakarta Sans.
-- `scripts/build-data.mjs` – Archiv-Index, Saison-Erkennung, Watchlist-Alarm.
+- `scripts/build-data.mjs` – Archiv-Index, Saison-Erkennung, Fortnite.GG-Zuordnung, Watchlist-Alarm.
 - `.github/workflows/deploy.yml` – baut und veröffentlicht auf GitHub Pages.
 - Persönliches (Wunschliste, Spind, Guthaben, API-Key) bleibt im Browser.
 
-Echte 3D-Modelle stellt Epic nicht bereit; die 3D-Ansicht ist eine Sammelkarte mit den offiziellen Item-Renders. Das Showcase-Video zeigt das Item im Spiel.
+Echte 3D-Modelle stellt Epic nicht bereit; die 360°-Videos kommen von Fortnite.GG, die 3D-Ansicht ist eine Sammelkarte mit den offiziellen Item-Renders.
 
 ## Rechtliches
 
