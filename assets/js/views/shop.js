@@ -49,6 +49,7 @@ const MARK = '<svg viewBox="0 0 64 64" aria-hidden="true"><path fill="none" stro
 const fmtDay = new Intl.DateTimeFormat('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
 let heroImg = null;
 let revealObs = null;
+let spotObs = null;
 
 export async function init(container) {
   el = container;
@@ -210,6 +211,15 @@ function counts(shop) {
   return c;
 }
 
+/** Laufband nur bewegen, wenn es zu sehen ist (spart Rechenleistung für die Videos) */
+function watchSpotlight() {
+  spotObs?.disconnect();
+  const sp = $('.spotlight', el);
+  if (!sp || !('IntersectionObserver' in window)) return;
+  spotObs = new IntersectionObserver(([e]) => sp.classList.toggle('is-off', !e.isIntersecting));
+  spotObs.observe(sp);
+}
+
 function render() {
   const shop = getShop();
   if (!shop) return;
@@ -245,6 +255,7 @@ function render() {
     <p class="result-line label" data-count></p>
     <div data-results></div>`;
   applyHeroImage();
+  watchSpotlight();
   renderTabs();
   renderTypes();
   renderSettings();

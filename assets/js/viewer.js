@@ -53,7 +53,7 @@ export function close() {
   root = null;
   current = null;
   lastModel = null;
-  document.body.classList.remove('no-scroll');
+  document.body.classList.remove('no-scroll', 'viewer-open');
   document.removeEventListener('keydown', onKey);
   lastFocus?.focus?.({ preventScroll: true });
 }
@@ -76,7 +76,7 @@ function mountShell() {
       <button class="viewer__x" type="button" data-v-close aria-label="Schließen" title="Schließen (Esc)">${icons.close}</button>
     </div>`;
   $('#viewer-root').append(root);
-  document.body.classList.add('no-scroll');
+  document.body.classList.add('no-scroll', 'viewer-open');
   document.addEventListener('keydown', onKey);
   root.addEventListener('click', onClick);
   $('.viewer__x', root).focus({ preventScroll: true });
