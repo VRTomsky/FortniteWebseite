@@ -413,6 +413,31 @@ main:focus { outline: none; }
   .spotlight__track { animation: none; }
 }
 
+/* ---------- Filterleiste (Archiv, Stats, V-Bucks) ---------- */
+.toolbar {
+  position: sticky; top: calc(var(--topbar-h) + env(safe-area-inset-top, 0px)); z-index: 30;
+  display: grid; gap: 10px;
+  margin: 0 calc(-1 * var(--gutter)); padding: 12px var(--gutter);
+  background: rgba(28, 29, 33, .97);
+  border-bottom: 1px solid rgba(255, 255, 255, .06);
+}
+.toolbar__row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 0; }
+.toolbar__row--scroll { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.toolbar__row--scroll::-webkit-scrollbar { display: none; }
+.toolbar .search { position: relative; flex: 1 1 240px; min-width: 0; max-width: 380px; }
+.toolbar .search .input { padding-left: 40px; min-height: 40px; border-radius: var(--r-pill); }
+.toolbar .search svg { position: absolute; left: 14px; top: 50%; width: 16px; height: 16px; transform: translateY(-50%); color: var(--text-faint); pointer-events: none; }
+.toolbar .select { width: auto; min-height: 40px; font-size: var(--t-sm); border-radius: var(--r-pill); padding-left: 16px; }
+.toolbar .sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
+@media (max-width: 760px) {
+  .toolbar { position: static; }
+  .toolbar .sep { display: none; }
+  .toolbar__row--scroll { margin: 0 calc(-1 * var(--gutter)); padding: 0 var(--gutter); }
+  .toolbar .select { flex: 1 1 140px; }
+}
+/* Sicherheitsnetz: Symbole ohne eigene Größe nie riesig werden lassen */
+.search svg, .btn svg, .chip svg { width: 16px; height: 16px; flex: none; }
+
 /* ---------- Shop-Kopf (wie Fortnite.GG) ---------- */
 .shop-head { display: grid; justify-items: center; gap: 6px; text-align: center; padding: 26px 0 6px; scroll-margin-top: calc(var(--topbar-h) + 12px); }
 .shop-head__title { margin: 0; font: 400 clamp(2rem, 4.4vw, 2.75rem)/1 var(--f-display); text-transform: uppercase; padding-top: .08em; text-shadow: 0 5px 3px rgba(0, 0, 0, .2); }
@@ -464,7 +489,8 @@ main:focus { outline: none; }
 .search--pill { position: relative; display: block; flex: 0 1 260px; min-width: 0; }
 .search--pill .input { min-height: 42px; padding-left: 40px; border-radius: var(--r-pill); background: var(--ink-2); border-color: transparent; font-size: var(--t-sm); }
 .search--pill svg { position: absolute; left: 14px; top: 50%; width: 16px; height: 16px; transform: translateY(-50%); color: var(--text-faint); pointer-events: none; }
-.result-line { text-align: center; margin: 0; }
+.shop-count { text-align: center; margin: 0; }
+.result-line { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; align-items: baseline; }
 @media (max-width: 640px) {
   .shop-tabs { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; scrollbar-width: none; width: calc(100% + 2 * var(--gutter)); margin-left: calc(-1 * var(--gutter)); padding: 0 var(--gutter); }
   .shop-tabs::-webkit-scrollbar { display: none; }
@@ -523,10 +549,10 @@ main:focus { outline: none; }
   grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
 }
 .grid--large { --cols: 4; }
-.grid--compact { --cols: 7; }
-@media (max-width: 1360px) { .grid { --cols: 5; } .grid--large { --cols: 4; } .grid--compact { --cols: 6; } }
-@media (max-width: 1100px) { .grid { --cols: 4; } .grid--large { --cols: 3; } .grid--compact { --cols: 5; } }
-@media (max-width: 860px) { .grid { --cols: 3; } .grid--large { --cols: 2; } .grid--compact { --cols: 4; } }
+.grid--compact { --cols: 6; }
+@media (max-width: 1360px) { .grid { --cols: 5; } .grid--large { --cols: 4; } .grid--compact { --cols: 5; } }
+@media (max-width: 1100px) { .grid { --cols: 4; } .grid--large { --cols: 3; } .grid--compact { --cols: 4; } }
+@media (max-width: 860px) { .grid { --cols: 3; } .grid--large { --cols: 2; } .grid--compact { --cols: 3; } }
 @media (max-width: 620px) { .grid, .grid--compact { --cols: 2; } .grid--large { --cols: 1; } }
 
 .tile {
@@ -931,6 +957,7 @@ body.viewer-open main, body.viewer-open .topbar, body.viewer-open .footer, body.
 .vp-occ svg { width: 14px; height: 14px; color: var(--shop); transition: transform .2s; }
 .vp-occ[aria-expanded="true"] svg { transform: rotate(180deg); }
 .vp-occ-list { display: grid; gap: 10px; margin-top: 12px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .vp-btns { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .vp-btn {
   display: inline-flex; align-items: center; gap: 8px;

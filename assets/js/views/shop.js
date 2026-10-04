@@ -252,7 +252,7 @@ function render() {
         </label>
       </div>
     </section>
-    <p class="result-line label" data-count></p>
+    <p class="shop-count label" data-count></p>
     <div data-results></div>`;
   applyHeroImage();
   watchSpotlight();

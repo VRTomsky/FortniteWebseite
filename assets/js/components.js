@@ -124,7 +124,7 @@ export function itemTile(it, { badge, seen = true, owned } = {}) {
   let strip = '';
   if (seen) {
     strip = it.last != null
-      ? `<span class="tile__left">${icons.clock}<span>${esc(fmtAgo(it.since).replace(/^vor /, 'vor '))}</span></span>${it.runs ? `<span class="tile__back">${fmtNum(it.runs)}× im Shop</span>` : ''}`
+      ? `<span class="tile__left" title="Zuletzt im Shop: ${esc(fmtAgo(it.since))}">${icons.clock}<span>${esc(fmtAgo(it.since))}</span></span>${it.runs ? `<span class="tile__back" title="${fmtNum(it.runs)}× im Shop">${fmtNum(it.runs)}×</span>` : ''}`
       : `<span class="tile__left">${icons.clock}<span>Noch nie im Shop</span></span>`;
   } else {
     strip = `<span class="tile__left">${esc(typeLabel(it.type))}</span>${it.rarity ? `<span class="tile__back">${esc(rarityLabel(it.rarity))}</span>` : ''}`;
