@@ -1,0 +1,33 @@
+{
+  "built": "2026-10-24T15:56:33.016Z",
+  "build": "++Fortnite+Release-42.40-CL-59086525",
+  "buildDate": "2026-10-15T08:01:06Z",
+  "chapter": 7,
+  "season": 4,
+  "seasonNumber": 42,
+  "counts": {
+    "backpack": 2678,
+    "banner": 103,
+    "petcarrier": 18,
+    "pet": 17,
+    "pickaxe": 2348,
+    "outfit": 3031,
+    "wrap": 1222,
+    "sidekick": 84,
+    "contrail": 269,
+    "glider": 752,
+    "emote": 2154,
+    "emoji": 883,
+    "loadingscreen": 1133,
+    "music": 224,
+    "shoe": 408,
+    "aura": 48,
+    "spray": 1225,
+    "toy": 23
+  },
+  "shop": {
+    "date": "2026-10-24T00:00:00Z",
+    "hash": "08ebd0e6d8acd403",
+    "entries": 344
+  }
+}
